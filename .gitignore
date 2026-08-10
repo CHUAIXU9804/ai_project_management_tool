@@ -2,7 +2,7 @@
 .env
 .env.*
 !.env.example
-supabase-config.js
+frontend/config/supabase-config.js
 
 # Python-generated files
 __pycache__/
@@ -11,6 +11,7 @@ __pycache__/
 # Local virtual environments
 .venv/
 venv/
+backend/.venv/
 
 # Editor and operating-system files
 .DS_Store

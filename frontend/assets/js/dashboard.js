@@ -258,11 +258,9 @@ const activity = [
   },
 ];
 const connectors = [
-  ["gmail", "Gmail", "Messages, threads, and attachments", "M", true],
-  ["slack", "Slack", "Channels and direct messages", "S", true],
-  ["drive", "Google Drive", "Documents and shared files", "D", true],
-  ["calendar", "Google Calendar", "Meetings, attendees, and dates", "31", true],
-  ["chat", "Google Chat", "Spaces and direct conversations", "G", false],
+  { id: "gmail", name: "Gmail", description: "Import selected messages, threads, and attachment metadata", icon: "M", connected: false },
+  { id: "google_calendar", name: "Google Calendar", description: "Import meetings, attendees, dates, and descriptions", icon: "31", connected: false },
+  { id: "slack", name: "Slack", description: "Planned after Gmail and Calendar", icon: "S", connected: false, comingSoon: true },
 ];
 const $ = (s, r = document) => r.querySelector(s),
   $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -382,23 +380,58 @@ function renderConnectors() {
   $("#connectorList").innerHTML = connectors
     .map(
       (c) =>
-        `<div class="connector"><i class="source ${c[0]}">${c[3]}</i><div><strong>${c[1]}</strong><small>${c[2]}</small></div><button type="button" data-id="${c[0]}" class="${c[4] ? "connected" : ""}">${c[4] ? "Connected" : "Connect"}</button></div>`,
+        `<div class="connector"><i class="source ${c.id}">${c.icon}</i><div><strong>${c.name}</strong><small>${c.description}</small></div><button type="button" data-connector="${c.id}" class="${c.connected ? "connected" : ""}" ${c.comingSoon ? "disabled" : ""}>${c.comingSoon ? "Coming soon" : c.connected ? "Connected" : "Connect"}</button></div>`,
     )
     .join("");
-  $$(".connector button").forEach(
-    (b) =>
-      (b.onclick = () => {
-        const c = connectors.find((c) => c[0] === b.dataset.id);
-        c[4] = !c[4];
-        renderConnectors();
-        toast(
-          `${c[1]} ${c[4] ? "connected" : "disconnected"}`,
-          c[4]
-            ? "Ready to scan selected content."
-            : "No new content will be scanned.",
-        );
-      }),
-  );
+  renderIntegrationOptions();
+  $$('[data-connector]:not([disabled])').forEach((button) => {
+    button.onclick = () => connectSource(button.dataset.connector);
+  });
+}
+
+function renderIntegrationOptions() {
+  const target = $("#integrationOptions");
+  if (!target) return;
+  target.innerHTML = connectors
+    .filter((connector) => !connector.comingSoon)
+    .map((connector) => `
+      <article class="integration-option ${connector.connected ? "is-connected" : ""}">
+        <i class="source ${connector.id}">${connector.icon}</i>
+        <div><strong>${connector.name}</strong><small>${connector.connected ? "Sync is active" : "Connect to import automatically"}</small></div>
+        <button type="button" data-connector="${connector.id}">${connector.connected ? "Manage" : "Connect"}</button>
+      </article>`)
+    .join("");
+}
+
+async function connectSource(provider) {
+  const connector = connectors.find((item) => item.id === provider);
+  if (!connector) return;
+  if (connector.connected) {
+    $("#sourcesDialog").showModal();
+    return;
+  }
+  if (!window.startSourceConnection) {
+    toast("Integration setup required", "Deploy the Google OAuth Edge Function before connecting this source.");
+    return;
+  }
+  try {
+    await window.startSourceConnection(provider);
+  } catch (error) {
+    toast(`Could not connect ${connector.name}`, error.message);
+  }
+}
+
+window.setSourceConnections = (rows = []) => {
+  connectors.forEach((connector) => {
+    connector.connected = rows.some((row) => row.provider === connector.id && row.status === "active");
+  });
+  renderConnectors();
+  $$("#sidebarSources li").forEach((row, index) => {
+    const connector = connectors[index];
+    const state = row.querySelector(".source-state");
+    if (connector && state) state.textContent = connector.connected ? "Connected" : "Not connected";
+    row.classList.toggle("is-connected", Boolean(connector?.connected));
+  });
 }
 function toast(title, detail) {
   const t = document.createElement("div");
@@ -407,6 +440,7 @@ function toast(title, detail) {
   $("#toasts").append(t);
   setTimeout(() => t.remove(), 3300);
 }
+window.showToast = toast;
 
 window.updateCurrentUserUI = (displayName) => {
   currentUserDisplayName = displayName || "You";
@@ -469,6 +503,7 @@ $$(".tabs button").forEach(
 );
 $("#uploadBtn").onclick = () => $("#uploadDialog").showModal();
 $("#addBtn").onclick = () => $("#updateDialog").showModal();
+$("#connectAppsBtn").onclick = () => $("#sourcesDialog").showModal();
 $("#manageSources").onclick = $("#sourcesNav").onclick = () =>
   $("#sourcesDialog").showModal();
 $$(".close-dialog").forEach(

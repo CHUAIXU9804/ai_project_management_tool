@@ -1,18 +1,23 @@
-Your three-file site is a static front end:
-index.html — page structure
-styles.css — visual design
-script.js — currently contains hard-coded project, action, and activity data
+Current repository locations:
+`frontend/index.html` — page structure
+`frontend/assets/css/styles.css` — visual design
+`frontend/assets/js/dashboard.js` — dashboard rendering and interactions
+`frontend/assets/js/auth.js` — authentication and user profiles
+`backend/database/supabase_connections.py` — titled database-query runner
+`backend/database/supabase_queries.json` — schema, index, and RLS queries
+`backend/.env` — private server-side credentials (ignored by Git)
 The cleanest setup is:
 Supabase PostgreSQL
-        ↓
+↓
 Supabase JavaScript client
-        ↓
+↓
 script.js loads data
-        ↓
+↓
 Existing render functions update index.html
 The browser may safely contain a Supabase publishable key, but never a secret key or legacy service_role key. Supabase’s publishable key has limited privileges, while Row Level Security determines which records each signed-in user can access. Supabase API-key documentation
 
 # Note: Call URL and the key - Define SUPABASE_URL, SUPABASE_KEY
+
 # Commented out const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
 Step 1: Create your Supabase account and project
@@ -27,15 +32,13 @@ Select New project.
 Choose or create an organization.
 
 Enter:
-Project name: threadline
+Project name: ThreadLinePMA
 Database password: generate and securely save a strong password
 Region: choose the region closest to your users
 
 Select Create new project.
 Wait for the database to finish provisioning.
 Do not put the database password anywhere in your HTML or JavaScript.
-
-
 
 Step 2: Create the database tables
 Open:
@@ -223,7 +226,6 @@ This MVP uses seven application tables. `source_items` replaces separate upload,
 
 To remain comfortable under the Free tier, sync only selected Gmail content and selected calendars within a recent 30–60 day window, keep `text_excerpt` short, delete `extracted_text` after processing when it is no longer needed, store files in Supabase Storage rather than PostgreSQL, and do not copy Gmail attachments automatically. Use the Google Calendar incremental sync token in `source_connections.sync_cursor` so unchanged events are not downloaded repeatedly.
 
-
 Step 3: Enable database security
 Run the following SQL:
 
@@ -292,7 +294,6 @@ with check ((select auth.uid()) = user_id);
 
 Supabase recommends enabling RLS on every table exposed through the browser. Supabase RLS documentation
 
-
 Step 4: Configure email authentication
 In Supabase, open:
 Authentication → Providers → Email
@@ -308,27 +309,27 @@ http://localhost:8000/**
 After deployment, add the production URL, for example:
 https://your-site.example.com/**
 
-
 Step 5: Get the browser credentials
 Open your project’s Connect dialog, or go to:
 Project Settings → API Keys
 Copy:
 Project URL, such as https://abcxyz.supabase.co
-Publishable key, beginning with sb_publishable_
+Publishable key, beginning with sb*publishable*
 Use the publishable key in the browser. Never use:
-sb_secret_...
+sb*secret*...
 service_role
 Your database password
 Supabase now recommends publishable keys for client-side applications. Supabase key guidance
 
-
-
 Step 6: Update index.html
 Edit [index.html](/Users/cxu/PycharmProjects/AI_Projects/ai_project_management_tool/index.html).
 Immediately before the existing script.js tag, add the Supabase browser SDK:
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="script.js"></script>
+
 The end of the file should therefore look like:
+
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -365,33 +366,31 @@ Add a small login dialog before those scripts:
         Send sign-in link
       </button>
     </footer>
+
   </form>
 </dialog>
-
-
 
 Step 7: Update styles.css
 Your existing form and dialog styles should handle most of the login dialog. Add this to [styles.css](/Users/cxu/PycharmProjects/AI_Projects/ai_project_management_tool/styles.css):
 .loading-message,
 .error-message {
-  padding: 2rem;
-  text-align: center;
-  color: #667085;
+padding: 2rem;
+text-align: center;
+color: #667085;
 }
 
 .error-message {
-  color: #b42318;
+color: #b42318;
 }
 
 #loginDialog::backdrop {
-  background: rgba(15, 23, 42, 0.55);
+background: rgba(15, 23, 42, 0.55);
 }
 
 #loginDialog {
-  width: min(460px, calc(100% - 2rem));
+width: min(460px, calc(100% - 2rem));
 }
 No other database-specific CSS changes are required.
-
 
 Step 8: Initialize Supabase in script.js
 Edit [script.js](/Users/cxu/PycharmProjects/AI_Projects/ai_project_management_tool/script.js).
@@ -400,8 +399,8 @@ const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_YOUR_KEY";
 
 const db = window.supabase.createClient(
-  SUPABASE_URL,
-  SUPABASE_PUBLISHABLE_KEY,
+SUPABASE_URL,
+SUPABASE_PUBLISHABLE_KEY,
 );
 
 let projects = [];
@@ -415,83 +414,81 @@ const activity = [/* hard-coded data */];
 Do not declare the same variables twice.
 Supabase initializes the browser client with the project URL and publishable key. JavaScript client initialization
 
-
 Step 9: Add the authentication functions
 Add these functions after the $ and $$ helpers:
 async function getCurrentUser() {
-  const {
-    data: { user },
-    error,
-  } = await db.auth.getUser();
+const {
+data: { user },
+error,
+} = await db.auth.getUser();
 
-  if (error) {
-    console.error("Unable to read user session:", error);
-  }
+if (error) {
+console.error("Unable to read user session:", error);
+}
 
-  return user;
+return user;
 }
 
 async function requireUser() {
-  const user = await getCurrentUser();
+const user = await getCurrentUser();
 
-  if (!user) {
-    $("#loginDialog").showModal();
-    return null;
-  }
+if (!user) {
+$("#loginDialog").showModal();
+return null;
+}
 
-  return user;
+return user;
 }
 
 $("#loginForm").onsubmit = async (event) => {
-  event.preventDefault();
+event.preventDefault();
 
-  const email = $("#loginEmail").value.trim();
-  const submitButton = event.submitter;
+const email = $("#loginEmail").value.trim();
+const submitButton = event.submitter;
 
-  submitButton.disabled = true;
-  submitButton.textContent = "Sending…";
+submitButton.disabled = true;
+submitButton.textContent = "Sending…";
 
-  const { error } = await db.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo: window.location.origin,
-    },
-  });
+const { error } = await db.auth.signInWithOtp({
+email,
+options: {
+emailRedirectTo: window.location.origin,
+},
+});
 
-  submitButton.disabled = false;
-  submitButton.textContent = "Send sign-in link";
+submitButton.disabled = false;
+submitButton.textContent = "Send sign-in link";
 
-  if (error) {
-    console.error(error);
-    toast("Sign-in failed", error.message);
-    return;
-  }
+if (error) {
+console.error(error);
+toast("Sign-in failed", error.message);
+return;
+}
 
-  toast("Check your email", "Supabase sent you a secure sign-in link.");
+toast("Check your email", "Supabase sent you a secure sign-in link.");
 };
-
 
 Step 10: Load projects and related information
 Add this function to script.js:
 async function loadDashboardData() {
-  const user = await requireUser();
-  if (!user) return;
+const user = await requireUser();
+if (!user) return;
 
-  $("#projectGrid").innerHTML =
-    '<p class="loading-message">Loading projects…</p>';
+$("#projectGrid").innerHTML =
+'<p class="loading-message">Loading projects…</p>';
 
-  const [
-    projectsResult,
-    eventsResult,
-    actionsResult,
-    filesResult,
-    activityResult,
-  ] = await Promise.all([
-    db
-      .from("projects")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at"),
+const [
+projectsResult,
+eventsResult,
+actionsResult,
+filesResult,
+activityResult,
+] = await Promise.all([
+db
+.from("projects")
+.select("\*")
+.eq("user_id", user.id)
+.order("created_at"),
 
     db
       .from("project_events")
@@ -517,31 +514,32 @@ async function loadDashboardData() {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(20),
-  ]);
 
-  const error = [
-    projectsResult,
-    eventsResult,
-    actionsResult,
-    filesResult,
-    activityResult,
-  ].find((result) => result.error)?.error;
+]);
 
-  if (error) {
-    console.error("Supabase loading error:", error);
-    $("#projectGrid").innerHTML =
+const error = [
+projectsResult,
+eventsResult,
+actionsResult,
+filesResult,
+activityResult,
+].find((result) => result.error)?.error;
+
+if (error) {
+console.error("Supabase loading error:", error);
+$("#projectGrid").innerHTML =
       `<p class="error-message">${escapeHtml(error.message)}</p>`;
-    return;
-  }
+return;
+}
 
-  const eventRows = eventsResult.data;
-  const actionRows = actionsResult.data;
-  const fileRows = filesResult.data;
+const eventRows = eventsResult.data;
+const actionRows = actionsResult.data;
+const fileRows = filesResult.data;
 
-  projects = projectsResult.data.map((project) => {
-    const deadline = project.deadline
-      ? new Date(`${project.deadline}T00:00:00`)
-      : null;
+projects = projectsResult.data.map((project) => {
+const deadline = project.deadline
+? new Date(`${project.deadline}T00:00:00`)
+: null;
 
     const days = deadline
       ? Math.ceil((deadline - new Date()) / 86400000)
@@ -587,12 +585,13 @@ async function loadDashboardData() {
           ).toLocaleDateString()}`,
         ]),
     };
-  });
 
-  actions = actionRows.map((action) => {
-    const project = projects.find(
-      (item) => item.id === action.project_id,
-    );
+});
+
+actions = actionRows.map((action) => {
+const project = projects.find(
+(item) => item.id === action.project_id,
+);
 
     return {
       id: action.id,
@@ -612,57 +611,57 @@ async function loadDashboardData() {
       done: action.completed,
       color: action.color || project?.color || "#4263eb",
     };
-  });
 
-  activity = activityResult.data.map((item) => ({
-    icon: item.icon,
-    text: escapeHtml(item.activity_text),
-    meta: escapeHtml(item.metadata),
-    time: relativeTime(item.created_at),
-    color: item.color,
-    soft: item.soft_color,
-  }));
+});
 
-  renderProjects();
-  renderActions();
-  renderActivity();
-  populateProjectOptions();
+activity = activityResult.data.map((item) => ({
+icon: item.icon,
+text: escapeHtml(item.activity_text),
+meta: escapeHtml(item.metadata),
+time: relativeTime(item.created_at),
+color: item.color,
+soft: item.soft_color,
+}));
+
+renderProjects();
+renderActions();
+renderActivity();
+populateProjectOptions();
 }
 Add the supporting helpers:
 function escapeHtml(value = "") {
-  const element = document.createElement("div");
-  element.textContent = value;
-  return element.innerHTML;
+const element = document.createElement("div");
+element.textContent = value;
+return element.innerHTML;
 }
 
 function relativeTime(dateString) {
-  const seconds = Math.max(
-    1,
-    Math.floor((Date.now() - new Date(dateString).getTime()) / 1000),
-  );
+const seconds = Math.max(
+1,
+Math.floor((Date.now() - new Date(dateString).getTime()) / 1000),
+);
 
-  if (seconds < 60) return `${seconds} sec`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr`;
+if (seconds < 60) return `${seconds} sec`;
+if (seconds < 3600) return `${Math.floor(seconds / 60)} min`;
+if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr`;
 
-  return `${Math.floor(seconds / 86400)} days`;
+return `${Math.floor(seconds / 86400)} days`;
 }
 
 function populateProjectOptions() {
-  const options = projects
-    .map(
-      (project) =>
-        `<option value="${project.id}">${escapeHtml(project.name)}</option>`,
-    )
-    .join("");
+const options = projects
+.map(
+(project) =>
+`<option value="${project.id}">${escapeHtml(project.name)}</option>`,
+)
+.join("");
 
-  $("#updateProject").innerHTML = options;
+$("#updateProject").innerHTML = options;
 
-  $("#uploadProject").innerHTML =
-    '<option value="auto">Let AI detect the project</option>' + options;
+$("#uploadProject").innerHTML =
+'<option value="auto">Let AI detect the project</option>' + options;
 }
 Explicit .eq("user_id", user.id) filters help database performance even though RLS also restricts the records. Supabase RLS performance guidance
-
 
 Step 11: Replace the current page initialization
 Find this block:
@@ -672,8 +671,8 @@ renderActivity();
 renderConnectors();
 
 const opts = projects
-  .map((p) => `<option value="${p.id}">${p.name}</option>`)
-  .join("");
+.map((p) => `<option value="${p.id}">${p.name}</option>`)
+.join("");
 
 $("#updateProject").innerHTML = opts;
 $("#uploadProject").insertAdjacentHTML("beforeend", opts);
@@ -681,125 +680,120 @@ Replace it with:
 renderConnectors();
 
 async function initializeApp() {
-  const user = await requireUser();
+const user = await requireUser();
 
-  if (user) {
-    await loadDashboardData();
-  }
+if (user) {
+await loadDashboardData();
+}
 }
 
 db.auth.onAuthStateChange((event, session) => {
-  if (session?.user) {
-    $("#loginDialog").close();
-    loadDashboardData();
-  }
+if (session?.user) {
+$("#loginDialog").close();
+loadDashboardData();
+}
 });
 
 initializeApp();
 Now the page waits for Supabase before rendering its cards.
 
-
-
 Step 12: Save a new timeline update to Supabase
 Replace the existing updateForm.onsubmit handler with:
 $("#updateForm").onsubmit = async (event) => {
-  event.preventDefault();
+event.preventDefault();
 
-  const user = await requireUser();
-  if (!user) return;
+const user = await requireUser();
+if (!user) return;
 
-  const project = projects.find(
-    (item) => item.id === $("#updateProject").value,
-  );
+const project = projects.find(
+(item) => item.id === $("#updateProject").value,
+);
 
-  const { error } = await db
-    .from("project_events")
-    .insert({
-      project_id: project.id,
-      user_id: user.id,
-      event_type: $("#updateType").value,
-      title: $("#updateTitle").value.trim(),
-      body: $("#updateDetails").value.trim(),
-      person: user.email,
-      color: project.color,
-    });
+const { error } = await db
+.from("project_events")
+.insert({
+project_id: project.id,
+user_id: user.id,
+event_type: $("#updateType").value,
+title: $("#updateTitle").value.trim(),
+body: $("#updateDetails").value.trim(),
+person: user.email,
+color: project.color,
+});
 
-  if (error) {
-    console.error(error);
-    toast("Update not saved", error.message);
-    return;
-  }
+if (error) {
+console.error(error);
+toast("Update not saved", error.message);
+return;
+}
 
-  event.target.reset();
-  $("#updateDialog").close();
+event.target.reset();
+$("#updateDialog").close();
 
-  await loadDashboardData();
-  toast("Update added", `Added to ${project.name}.`);
+await loadDashboardData();
+toast("Update added", `Added to ${project.name}.`);
 };
-
 
 Step 13: Persist completed actions
 Inside the existing checkbox handler, change it to an asynchronous handler:
 x.onchange = async () => {
-  const action = actions.find(
-    (item) => item.id == x.closest(".action").dataset.id,
-  );
+const action = actions.find(
+(item) => item.id == x.closest(".action").dataset.id,
+);
 
-  const previousValue = action.done;
-  action.done = x.checked;
-  renderActions();
+const previousValue = action.done;
+action.done = x.checked;
+renderActions();
 
-  const { error } = await db
-    .from("project_actions")
-    .update({ completed: action.done })
-    .eq("id", action.id);
+const { error } = await db
+.from("project_actions")
+.update({ completed: action.done })
+.eq("id", action.id);
 
-  if (error) {
-    console.error(error);
-    action.done = previousValue;
-    renderActions();
-    toast("Action not updated", error.message);
-    return;
-  }
+if (error) {
+console.error(error);
+action.done = previousValue;
+renderActions();
+toast("Action not updated", error.message);
+return;
+}
 
-  $("#actionCount").textContent =
-    actions.filter((item) => !item.done).length;
+$("#actionCount").textContent =
+actions.filter((item) => !item.done).length;
 
-  toast(
-    action.done ? "Action completed" : "Action reopened",
-    action.title,
-  );
+toast(
+action.done ? "Action completed" : "Action reopened",
+action.title,
+);
 };
 Supabase supports browser-side select, insert, and update operations, with authorization enforced by RLS. Supabase JavaScript select documentation
-
 
 Step 14: Persist event deletion
 Replace the current in-memory delete operation with:
 b.onclick = async () => {
-  const eventId = Number(b.closest(".event").dataset.event);
+const eventId = Number(b.closest(".event").dataset.event);
 
-  const { error } = await db
-    .from("project_events")
-    .delete()
-    .eq("id", eventId);
+const { error } = await db
+.from("project_events")
+.delete()
+.eq("id", eventId);
 
-  if (error) {
-    console.error(error);
-    toast("Timeline item not deleted", error.message);
-    return;
-  }
+if (error) {
+console.error(error);
+toast("Timeline item not deleted", error.message);
+return;
+}
 
-  await loadDashboardData();
+await loadDashboardData();
 
-  activeProject = projects.find(
-    (project) => project.id === activeProject.id,
-  );
+activeProject = projects.find(
+(project) => project.id === activeProject.id,
+);
 
-  renderDrawer();
-  toast("Timeline item deleted", "The project memory was updated.");
+renderDrawer();
+toast("Timeline item deleted", "The project memory was updated.");
 };
 Use the same pattern for editing: call .update(...), then reload the database information.
-
 
 Step 15: Add your first user and sample project
 Open the website locally.
@@ -878,7 +872,6 @@ values (
 
 Reload the UI. The Website Redesign project should now appear automatically.
 
-
 Step 16: Run the website through a local server
 Do not double-click index.html and use a file:// URL. Authentication redirects work more reliably through HTTP.
 From the project directory, run:
@@ -898,7 +891,6 @@ Confirm the completed state remains.
 Sign in with another user.
 Confirm that user cannot see the first user’s records.
 
-
 Step 17: Understand what Supabase does not automate
 This database connection automatically retrieves records already stored in Supabase. It does not automatically import Gmail or Google Calendar information.
 Those connector buttons are currently simulated. Real external connections require:
@@ -910,43 +902,10 @@ Transformation of external records into your Supabase tables
 OAuth client secrets and provider refresh tokens must never be placed in script.js. They belong in protected server-side environment variables or Supabase Edge Function secrets.
 Similarly, the existing Upload button only simulates file handling. Actual uploads should use Supabase Storage, while a backend process extracts and classifies their contents.
 
-
 10:42 AM
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 Ask for approval
 
-
-
-
-
-
-
 5.6 SolLight
-
-
-
-
-
-
-
-
-
 
 Work locallyLocal

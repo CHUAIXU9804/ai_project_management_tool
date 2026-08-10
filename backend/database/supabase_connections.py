@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 
 QUERY_FILE = Path(__file__).with_name("supabase_queries.json")
-ENV_FILE = Path(__file__).with_name(".env")
+ENV_FILE = Path(__file__).parent.parent / ".env"
 
 # Load local credentials without overriding variables already set by the shell.
 load_dotenv(ENV_FILE)
