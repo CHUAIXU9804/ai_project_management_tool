@@ -31,7 +31,7 @@
       </div>
       <div class="spacer"></div>
       <div class="sync-box" id="syncBox"><p><i></i> Workspace synced</p><small>Last scan 4 minutes ago</small><button id="scanBtn">Scan for updates</button></div>
-      <div class="profile"><span>JM</span><div><strong>Jordan Miller</strong><small>Project manager</small></div></div>
+      <button class="profile" id="profileButton" type="button"><span id="profileInitials">--</span><div><strong id="profileName">Account</strong><small id="profileTitle">Sign in required</small></div></button>
     </aside>
 
     <main>
@@ -45,7 +45,7 @@
 
       <div class="content" id="overview">
         <section class="welcome">
-          <div><p class="eyebrow">THURSDAY, AUGUST 6</p><h1>Good afternoon, Jordan</h1><p>Your project memory is up to date. Here’s what needs your attention.</p></div>
+          <div><p class="eyebrow">THURSDAY, AUGUST 6</p><h1>Good afternoon, <span id="welcomeUserName">there</span></h1><p>Your project memory is up to date. Here’s what needs your attention.</p></div>
           <div class="ai-summary"><span>✦</span><div><strong>18 new items organized</strong><small>across 4 projects since yesterday</small></div><button id="reviewBtn">Review</button></div>
         </section>
 
@@ -87,7 +87,72 @@
   <dialog id="sourcesDialog">
     <form method="dialog"><header><div><p class="eyebrow">DATA SOURCES</p><h2>Connect your workspace</h2></div><button value="cancel" class="icon">×</button></header><p class="help">Connection buttons are simulated for front-end testing.</p><div id="connectorList"></div><footer><button value="done" class="button primary">Done</button></footer></form>
   </dialog>
+
+  <dialog id="loginDialog" aria-labelledby="loginTitle">
+    <div class="auth-shell">
+      <aside class="auth-visual" aria-hidden="true">
+        <div class="auth-brand"><span>≋</span> Threadline</div>
+        <div class="auth-promise">
+          <span class="auth-kicker">YOUR PROJECT MEMORY</span>
+          <h2>Everything important,<br>finally in one place.</h2>
+          <p>Turn scattered conversations, meetings, and files into a clear project timeline.</p>
+          <div class="auth-source-row"><i>M</i><i>31</i><i>D</i><span>Connected and organized</span></div>
+        </div>
+        <div class="auth-orbit"><span></span><span></span><span></span></div>
+        <small>Securely powered by Supabase</small>
+      </aside>
+
+      <main class="auth-panel">
+        <form id="loginForm">
+          <div class="auth-heading">
+            <span class="auth-mobile-logo">≋</span>
+            <p class="eyebrow">WELCOME BACK</p>
+            <h1 id="loginTitle">Sign in to your workspace</h1>
+            <p>Enter your details below or create a new account.</p>
+          </div>
+
+          <div class="auth-fields">
+            <label>
+              <span>Display name <small>for new accounts</small></span>
+              <div class="auth-input"><i>◇</i><input id="authDisplayName" autocomplete="name" placeholder="Your name"></div>
+            </label>
+            <label>
+              <span>Email address</span>
+              <div class="auth-input"><i>@</i><input id="authEmail" type="email" autocomplete="email" placeholder="you@company.com" required></div>
+            </label>
+            <label>
+              <span>Password</span>
+              <div class="auth-input"><i>⌑</i><input id="authPassword" type="password" autocomplete="current-password" minlength="8" placeholder="At least 8 characters" required><button id="togglePassword" type="button" aria-label="Show password">Show</button></div>
+            </label>
+          </div>
+
+          <p id="authMessage" class="auth-message" aria-live="polite"></p>
+          <button class="auth-submit" type="submit" data-action="signin">Sign in <span>→</span></button>
+          <div class="auth-divider"><span>New to Threadline?</span></div>
+          <button class="auth-create" type="submit" data-action="signup">Create a free account</button>
+          <p class="auth-legal">By continuing, you agree to keep your workspace data secure.</p>
+        </form>
+      </main>
+    </div>
+  </dialog>
+
+  <dialog id="accountDialog">
+    <div class="account-dialog">
+      <header><div><p class="eyebrow">ACCOUNT</p><h2>Profile and security</h2><small id="accountEmail"></small></div><button class="icon" id="closeAccount" type="button">×</button></header>
+      <form id="profileForm">
+        <div class="form-grid"><label class="full">Display name<input id="profileDisplayName" required></label><label class="full">Job title<input id="profileJobTitle"></label></div>
+        <footer><button class="button primary">Save profile</button></footer>
+      </form>
+      <form id="passwordForm">
+        <div class="form-grid"><label class="full">New password<input id="newPassword" type="password" minlength="8" autocomplete="new-password" required></label></div>
+        <footer><button class="button secondary">Update password</button><button class="link-btn" id="signOutButton" type="button">Sign out</button></footer>
+      </form>
+    </div>
+  </dialog>
   <div class="toasts" id="toasts" aria-live="polite"></div>
-  <script src="script.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <script src="script.js?v=2"></script>
+  <script src="auth.js?v=2"></script>
 </body>
 </html>

@@ -1,3 +1,6 @@
+let currentUserDisplayName = "You";
+let currentUserInitials = "ME";
+
 const projects = [
   {
     id: "website",
@@ -10,7 +13,7 @@ const projects = [
     risk: "At risk",
     color: "#4263eb",
     soft: "#eef2ff",
-    members: ["JM", "AK", "SL"],
+    members: ["ME", "AK", "SL"],
     sources: ["gmail", "slack", "drive"],
     events: [
       {
@@ -18,7 +21,7 @@ const projects = [
         date: "Today, 11:24 AM",
         type: "Slack",
         title: "Mobile navigation fix is ready for review",
-        body: "Alex shared the updated build and asked Jordan to approve it before deployment.",
+        body: "Alex shared the updated build and asked you to approve it before deployment.",
         person: "Alex Kim",
         color: "#7950c8",
       },
@@ -28,7 +31,7 @@ const projects = [
         type: "Decision",
         title: "Launch moved to Friday at 4:00 PM",
         body: "The team agreed to allow one additional QA cycle. This supersedes the Wednesday launch plan.",
-        person: "Jordan + 4 teammates",
+        person: "Current user + 4 teammates",
         color: "#4263eb",
       },
       {
@@ -58,7 +61,7 @@ const projects = [
     risk: "",
     color: "#7950c8",
     soft: "#f3efff",
-    members: ["JM", "TN", "RC"],
+    members: ["ME", "TN", "RC"],
     sources: ["gmail", "calendar", "drive"],
     events: [
       {
@@ -96,7 +99,7 @@ const projects = [
     risk: "",
     color: "#d76c2c",
     soft: "#fff1e7",
-    members: ["JM", "MB", "KW"],
+    members: ["ME", "MB", "KW"],
     sources: ["slack", "drive", "calendar"],
     events: [
       {
@@ -134,7 +137,7 @@ const projects = [
     risk: "Needs input",
     color: "#17865c",
     soft: "#e8f7f0",
-    members: ["JM", "ET", "NP"],
+    members: ["ME", "ET", "NP"],
     sources: ["gmail", "calendar", "slack"],
     events: [
       {
@@ -169,7 +172,7 @@ const projects = [
     risk: "",
     color: "#2e8aa6",
     soft: "#e8f7fa",
-    members: ["JM", "DL", "PS"],
+    members: ["ME", "DL", "PS"],
     sources: ["drive", "calendar", "gmail"],
     events: [
       {
@@ -404,6 +407,36 @@ function toast(title, detail) {
   $("#toasts").append(t);
   setTimeout(() => t.remove(), 3300);
 }
+
+window.updateCurrentUserUI = (displayName) => {
+  currentUserDisplayName = displayName || "You";
+  currentUserInitials = currentUserDisplayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "ME";
+
+  const welcomeName = document.querySelector("#welcomeUserName");
+  if (welcomeName) welcomeName.textContent = currentUserDisplayName;
+
+  projects.forEach((project) => {
+    if (project.members.length) project.members[0] = currentUserInitials;
+    project.events.forEach((event) => {
+      if (event.person === "Current user + 4 teammates" || event.person.endsWith(" + 4 teammates")) {
+        event.person = `${currentUserDisplayName} + 4 teammates`;
+      }
+    });
+  });
+
+  renderProjects($("#projectFilter")?.value || "all");
+  if (activeProject) {
+    activeProject = projects.find((project) => project.id === activeProject.id);
+    renderDrawer();
+  }
+};
+
 renderProjects();
 renderActions();
 renderActivity();
@@ -498,7 +531,7 @@ $("#updateForm").onsubmit = (e) => {
     type: $("#updateType").value,
     title: $("#updateTitle").value,
     body: $("#updateDetails").value,
-    person: "Added by Jordan",
+    person: `Added by ${currentUserDisplayName}`,
     color: p.color,
   });
   e.target.reset();
