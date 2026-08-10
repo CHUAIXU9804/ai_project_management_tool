@@ -425,6 +425,26 @@ window.setSourceConnections = (rows = []) => {
   connectors.forEach((connector) => {
     connector.connected = rows.some((row) => row.provider === connector.id && row.status === "active");
   });
+  const connected = connectors.filter((connector) => connector.connected);
+  document.body.classList.toggle("has-integrations", connected.length > 0);
+  const welcomeStatus = $("#welcomeStatus");
+  const connectionSummary = $("#connectionSummary");
+  const integrationDescription = $("#integrationDescription");
+  if (connected.length) {
+    welcomeStatus.textContent = `${connected.length} source${connected.length === 1 ? " is" : "s are"} connected. ThreadLinePMA will organize imported updates below.`;
+    connectionSummary.innerHTML = `<span>✓</span><div><strong>${connected.length} app${connected.length === 1 ? "" : "s"} connected</strong><small>${connected.map((connector) => connector.name).join(" · ")}</small></div>`;
+    integrationDescription.textContent = "Your automatic imports are active. Connect another source or manage an existing connection at any time.";
+    $("#syncTitle").textContent = "Automatic sync active";
+    $("#syncStatus").textContent = "Ready to scan connected sources";
+    $("#scanBtn").textContent = "Scan for updates";
+  } else {
+    welcomeStatus.textContent = "Connect at least one work app to start building your dashboard automatically.";
+    connectionSummary.innerHTML = '<span>1</span><div><strong>First, connect your work apps</strong><small>Gmail or Google Calendar takes only a minute</small></div>';
+    integrationDescription.textContent = "Connect Gmail or Google Calendar first. ThreadLinePMA imports relevant information, groups it into projects, builds timelines, and extracts action items for you.";
+    $("#syncTitle").textContent = "Waiting for a connection";
+    $("#syncStatus").textContent = "No automatic imports yet";
+    $("#scanBtn").textContent = "Connect apps";
+  }
   renderConnectors();
   $$("#sidebarSources li").forEach((row, index) => {
     const connector = connectors[index];
@@ -432,7 +452,7 @@ window.setSourceConnections = (rows = []) => {
     if (connector && state) state.textContent = connector.connected ? "Connected" : "Not connected";
     row.classList.toggle("is-connected", Boolean(connector?.connected));
   });
-}
+};
 function toast(title, detail) {
   const t = document.createElement("div");
   t.className = "toast";
@@ -502,6 +522,7 @@ $$(".tabs button").forEach(
     }),
 );
 $("#uploadBtn").onclick = () => $("#uploadDialog").showModal();
+$("#optionalUploadBtn").onclick = () => $("#uploadDialog").showModal();
 $("#addBtn").onclick = () => $("#updateDialog").showModal();
 $("#connectAppsBtn").onclick = () => $("#sourcesDialog").showModal();
 $("#manageSources").onclick = $("#sourcesNav").onclick = () =>
@@ -575,13 +596,17 @@ $("#updateForm").onsubmit = (e) => {
   if (activeProject?.id === p.id) renderDrawer();
 };
 $("#scanBtn").onclick = () => {
+  if (!connectors.some((connector) => connector.connected)) {
+    $("#sourcesDialog").showModal();
+    return;
+  }
   const b = $("#syncBox");
   b.classList.add("loading");
   $("#scanBtn").textContent = "Scanning…";
   setTimeout(() => {
     b.classList.remove("loading");
     $("#scanBtn").textContent = "Scan for updates";
-    $("#syncBox small").textContent = "Last scan just now";
+    $("#syncStatus").textContent = "Last scan just now";
     toast(
       "Workspace scan complete",
       "3 new items matched to existing projects.",
@@ -614,11 +639,6 @@ $$(".nav[data-target]").forEach(
       if (innerWidth < 800) $("#sidebar").classList.remove("open");
     }),
 );
-$("#reviewBtn").onclick = () =>
-  toast(
-    "18 items reviewed",
-    "All source links and confidence labels were preserved.",
-  );
 $("#allActionsBtn").onclick = () => {
   if (!actions.some((a) => a.id === 5)) {
     actions.push({

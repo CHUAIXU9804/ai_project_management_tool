@@ -26,7 +26,7 @@
         <button class="link-btn" id="manageSources">+ Connect or manage</button>
       </div>
       <div class="spacer"></div>
-      <div class="sync-box" id="syncBox"><p><i></i> Workspace synced</p><small>Last scan 4 minutes ago</small><button id="scanBtn">Scan for updates</button></div>
+      <div class="sync-box" id="syncBox"><p><i></i> <span id="syncTitle">Waiting for a connection</span></p><small id="syncStatus">No automatic imports yet</small><button id="scanBtn">Connect apps</button></div>
       <button class="profile" id="profileButton" type="button"><span id="profileInitials">--</span><div><strong id="profileName">Account</strong><small id="profileTitle">Sign in required</small></div></button>
     </aside>
 
@@ -42,19 +42,36 @@
 
       <div class="content" id="overview">
         <section class="welcome">
-          <div><p class="eyebrow">THURSDAY, AUGUST 6</p><h1>Good afternoon, <span id="welcomeUserName">there</span></h1><p>Your project memory is up to date. Here’s what needs your attention.</p></div>
-          <div class="ai-summary"><span>✦</span><div><strong>18 new items organized</strong><small>across 4 projects since yesterday</small></div><button id="reviewBtn">Review</button></div>
+          <div><p class="eyebrow">YOUR PROJECT MEMORY</p><h1>Good afternoon, <span id="welcomeUserName">there</span></h1><p id="welcomeStatus">Connect at least one work app to start building your dashboard automatically.</p></div>
+          <div class="connection-summary" id="connectionSummary"><span>1</span><div><strong>First, connect your work apps</strong><small>Gmail or Google Calendar takes only a minute</small></div></div>
         </section>
 
         <section class="integration-hub" id="integrations" aria-labelledby="integrationTitle">
           <div class="integration-copy">
-            <p class="eyebrow">AUTOMATIC PROJECT MEMORY</p>
-            <h2 id="integrationTitle">Connect your work. Let ThreadLinePMA organize it.</h2>
-            <p>Import relevant messages and meetings automatically. ThreadLinePMA groups related information, builds timelines, and extracts actions—without asking you to recreate your work.</p>
+            <span class="setup-badge">RECOMMENDED FIRST STEP</span>
+            <p class="eyebrow">CONNECT ONCE. IMPORT AUTOMATICALLY.</p>
+            <h2 id="integrationTitle">Bring in the work you already do.</h2>
+            <p id="integrationDescription">Connect Gmail or Google Calendar first. ThreadLinePMA imports relevant information, groups it into projects, builds timelines, and extracts action items for you.</p>
             <div class="integration-notes"><span>✓ Read-only access</span><span>✓ You choose what syncs</span><span>✓ Disconnect anytime</span></div>
           </div>
           <div class="integration-options" id="integrationOptions"></div>
+          <div class="setup-flow" aria-label="How ThreadLinePMA works">
+            <article class="active"><i>1</i><div><strong>Connect your apps</strong><small>Gmail and Calendar are the primary inputs.</small></div></article>
+            <span>→</span>
+            <article><i>2</i><div><strong>Automatic import</strong><small>We organize related meetings and messages.</small></div></article>
+            <span>→</span>
+            <article><i>3</i><div><strong>Review results</strong><small>Verify projects, timelines, and actions.</small></div></article>
+          </div>
+          <div class="secondary-import">
+            <div><span>OPTIONAL</span><strong>Have files outside your connected apps?</strong><small>Upload documents as a secondary source. You do not need to recreate projects or tasks manually.</small></div>
+            <button class="button secondary" id="optionalUploadBtn" type="button">↑ Upload files</button>
+          </div>
         </section>
+
+        <div class="workspace-heading">
+          <div><p class="eyebrow">AUTOMATICALLY GENERATED OUTPUT</p><h2>Your organized workspace</h2><p>Projects, decisions, and actions appear here after your sources are imported.</p></div>
+          <span class="preview-label">Preview data</span>
+        </div>
 
         <section class="metrics" aria-label="Workspace summary">
           <article><i class="blue">▦</i><div><small>Active projects</small><strong>5</strong><span><b>2</b> due this week</span></div></article>
@@ -64,7 +81,7 @@
         </section>
 
         <section id="projects" class="project-section">
-          <div class="section-head"><div><h2>Active projects</h2><p>Automatically grouped from your conversations and files</p></div><div class="controls"><button id="gridBtn" class="active">▦</button><button id="listBtn">☷</button><select id="projectFilter"><option value="all">All projects</option><option value="urgent">Due this week</option><option value="risk">Needs attention</option></select></div></div>
+          <div class="section-head"><div><h2>Projects found for you</h2><p>Automatically grouped from connected conversations, meetings, and files</p></div><div class="controls"><button id="gridBtn" class="active">▦</button><button id="listBtn">☷</button><select id="projectFilter"><option value="all">All projects</option><option value="urgent">Due this week</option><option value="risk">Needs attention</option></select></div></div>
           <div class="project-grid" id="projectGrid"></div>
         </section>
 
