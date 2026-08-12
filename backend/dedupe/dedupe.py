@@ -20,6 +20,7 @@ Commands:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -31,6 +32,7 @@ sys.path.insert(0, str(HERE.parent / "auth"))
 import classification as cl
 import config as config_mod
 import dedupe_repo
+import relevance_gate
 
 
 def _resolve_user_id(cfg, explicit: str | None) -> str | None:
@@ -47,20 +49,25 @@ def _rep_key(row):
     return (1, row.created_at, str(row.id))
 
 
-def decide(rows) -> tuple[dict, dict]:
+def decide(rows, noise_override: set | None = None) -> tuple[dict, dict]:
     """Compute per-row (hash, reason). Returns (hash_by_id, reason_by_id).
 
     reason_by_id only contains excluded rows; absence means included.
+    `noise_override` holds ids the LLM gate cleared as relevant -- they are
+    treated as not-noise even if the deterministic rule flags them.
     """
+    override = noise_override or set()
     hash_by_id: dict = {}
     reason_by_id: dict = {}
 
-    # 1) Per-row noise (highest precedence).
+    # 1) Per-row noise (highest precedence), unless the gate cleared it.
     for row in rows:
         hash_by_id[row.id] = cl.content_hash(
             row.source_type, row.title, row.extracted_text
         )
-        if cl.is_noise(row.sender, row.title, row.extracted_text):
+        if row.id not in override and cl.is_noise(
+            row.sender, row.title, row.extracted_text
+        ):
             reason_by_id[row.id] = "noise"
 
     # 2) Collapse recurring calendar series (keep one representative).
@@ -93,6 +100,35 @@ def decide(rows) -> tuple[dict, dict]:
     return hash_by_id, reason_by_id
 
 
+def _gate_clear(rows, smart: bool) -> set:
+    """Return ids the LLM gate keeps: borderline (noise-flagged) but relevant.
+
+    Only runs when `smart` is set and an API key is present, and only on rows the
+    deterministic rule would drop -- so cost is bounded to borderline items.
+    """
+    if not smart:
+        return set()
+    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    if not api_key or api_key.endswith("REPLACE_ME"):
+        print("--smart set but no ANTHROPIC_API_KEY; skipping the LLM gate.")
+        return set()
+    model = os.getenv("ANTHROPIC_GATE_MODEL", relevance_gate.DEFAULT_GATE_MODEL).strip()
+    borderline = [
+        r for r in rows if cl.is_noise(r.sender, r.title, r.extracted_text)
+    ]
+    if not borderline:
+        return set()
+    print(f"LLM gate: reviewing {len(borderline)} borderline item(s) with {model} ...")
+    cleared = set()
+    for row in borderline:
+        if relevance_gate.is_relevant(
+            row.sender, row.title, row.extracted_text, api_key=api_key, model=model
+        ):
+            cleared.add(row.id)
+    print(f"LLM gate: kept {len(cleared)} of {len(borderline)} as relevant.")
+    return cleared
+
+
 def cmd_run(args, cfg) -> int:
     cfg.require_complete()
     user_id = _resolve_user_id(cfg, args.user_id)
@@ -101,7 +137,8 @@ def cmd_run(args, cfg) -> int:
         print("Nothing to deduplicate. Queue is empty.")
         return 0
 
-    hash_by_id, reason_by_id = decide(rows)
+    cleared = _gate_clear(rows, args.smart)
+    hash_by_id, reason_by_id = decide(rows, noise_override=cleared)
     tally = {"included": 0, "noise": 0, "recurring_instance": 0, "duplicate": 0}
     for row in rows:
         reason = reason_by_id.get(row.id)
@@ -130,7 +167,8 @@ def cmd_preview(args, cfg) -> int:
     if not rows:
         print("Nothing pending to preview.")
         return 0
-    _, reason_by_id = decide(rows)
+    cleared = _gate_clear(rows, args.smart)
+    _, reason_by_id = decide(rows, noise_override=cleared)
     for row in rows:
         reason = reason_by_id.get(row.id) or "INCLUDE"
         who = row.sender or "(no sender)"
@@ -165,6 +203,9 @@ def parse_args() -> argparse.Namespace:
         p.add_argument("--user-id", dest="user_id", default=None)
         if name in ("run", "preview"):
             p.add_argument("--limit", type=int, default=1000)
+            p.add_argument("--smart", action="store_true",
+                           help="Use the LLM gate (Haiku 4.5) on borderline "
+                                "noise items to keep genuine tasks/opportunities.")
     return parser.parse_args()
 
 

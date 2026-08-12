@@ -134,17 +134,25 @@ def _fetch_and_store(database_url, connection, access_token, message_ids) -> tup
     return inserted, updated
 
 
-def _backfill(database_url, connection, access_token, days, max_items) -> tuple[int, int, str]:
-    """List recent message ids, store them, and return the new history cursor."""
+def _backfill(
+    database_url, connection, access_token, days, max_items, query=None
+) -> tuple[int, int, str]:
+    """List recent message ids, store them, and return the new history cursor.
+
+    When `query` is given it is used as the Gmail search (e.g.
+    "from:codepath.org newer_than:180d"); otherwise the default recent-window
+    query is used.
+    """
     # Capture the mailbox historyId now; anything after it is caught next run.
     profile = _get(access_token, "/profile")
     new_cursor = str(profile.get("historyId", ""))
 
+    search = query.strip() if query and query.strip() else f"newer_than:{days}d"
     ids: list[str] = []
     page_token = None
     while len(ids) < max_items:
         params = {
-            "q": f"newer_than:{days}d",
+            "q": search,
             "maxResults": min(100, max_items - len(ids)),
         }
         if page_token:
@@ -192,13 +200,15 @@ def sync(
     force_full: bool = False,
     days: int = 30,
     max_items: int = 50,
+    query: str | None = None,
 ) -> dict:
     """Run one Gmail sync pass. Returns a summary dict including the new cursor.
 
     Falls back to a full backfill if there is no cursor, if forced, or if the
-    stored historyId is too old for the History API.
+    stored historyId is too old for the History API. A `query` forces a backfill
+    with that Gmail search string (incremental history sync can't be filtered).
     """
-    if cursor and not force_full:
+    if cursor and not force_full and not query:
         try:
             inserted, updated, new_cursor = _incremental(
                 database_url, connection, access_token, cursor, max_items
@@ -206,14 +216,14 @@ def sync(
             mode = "incremental"
         except _HistoryGone:
             inserted, updated, new_cursor = _backfill(
-                database_url, connection, access_token, days, max_items
+                database_url, connection, access_token, days, max_items, query
             )
             mode = "backfill (history expired)"
     else:
         inserted, updated, new_cursor = _backfill(
-            database_url, connection, access_token, days, max_items
+            database_url, connection, access_token, days, max_items, query
         )
-        mode = "backfill"
+        mode = "backfill (query)" if query else "backfill"
 
     return {
         "provider": "gmail",

@@ -74,6 +74,7 @@ def upsert_source_item(database_url: str, item: SourceItem) -> bool:
                     deduped_at = null,
                     embedding = null,
                     embedded_at = null,
+                    extracted_at = null,
                     updated_at = now()
                 returning (xmax = 0) as inserted
                 """,

@@ -1,7 +1,7 @@
 let currentUserDisplayName = "You";
 let currentUserInitials = "ME";
 
-const projects = [
+let projects = [
   {
     id: "website",
     name: "Website Redesign",
@@ -223,7 +223,7 @@ let actions = [
     color: "#17865c",
   },
 ];
-const activity = [
+let activity = [
   {
     icon: "M",
     text: "<b>Priya Shah</b> sent “Security review approved”",
@@ -265,6 +265,8 @@ const connectors = [
 const $ = (s, r = document) => r.querySelector(s),
   $$ = (s, r = document) => [...r.querySelectorAll(s)];
 function renderProjects(filter = "all") {
+  return; // Stage 7: the project grid is replaced by the chronological timeline.
+  // eslint-disable-next-line no-unreachable
   const shown = projects.filter(
     (p) =>
       filter === "all" ||
@@ -462,6 +464,199 @@ function toast(title, detail) {
 }
 window.showToast = toast;
 
+// Stage 7: auth.js loads the real projects/events/actions from Supabase and
+// hands them here to replace whatever is currently rendered.
+window.setDashboardData = ({ projects: p = [], actions: a = [], activity: act = [] } = {}) => {
+  projects = p;
+  actions = a;
+  activity = act;
+  renderProjects();
+  renderActions();
+  renderActivity();
+  const badge = $("#actionCount");
+  if (badge) badge.textContent = actions.filter((x) => !x.done).length;
+  const opts = projects
+    .map((project) => `<option value="${project.id}">${project.name}</option>`)
+    .join("");
+  const updateSelect = $("#updateProject");
+  if (updateSelect) updateSelect.innerHTML = opts;
+};
+
+// ---- Stage 7: chronological timeline of source items + thread drawer ----
+let timelineFeed = [];
+let allItems = [];
+
+function escHtml(value = "") {
+  const el = document.createElement("div");
+  el.textContent = value;
+  return el.innerHTML;
+}
+
+let _dragMoved = false;
+
+function _startOfWeek(date) {
+  const x = new Date(date);
+  const day = (x.getDay() + 6) % 7; // Monday = 0
+  x.setDate(x.getDate() - day);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function _bucketFor(dateVal, unit) {
+  if (!dateVal) return { key: "undated", label: "Undated", sort: Infinity };
+  const d = new Date(dateVal);
+  if (unit === "month") {
+    const s = new Date(d.getFullYear(), d.getMonth(), 1);
+    return { key: `m${s.getTime()}`, label: s.toLocaleDateString(undefined, { month: "short", year: "numeric" }), sort: s.getTime() };
+  }
+  if (unit === "week") {
+    const s = _startOfWeek(d);
+    return { key: `w${s.getTime()}`, label: s.toLocaleDateString(undefined, { month: "short", day: "numeric" }), sort: s.getTime() };
+  }
+  const s = new Date(d);
+  s.setHours(0, 0, 0, 0);
+  return { key: `d${s.getTime()}`, label: s.toLocaleDateString(undefined, { month: "short", day: "numeric" }), sort: s.getTime() };
+}
+
+function _wireDragScroll(el) {
+  let down = false, startX = 0, startLeft = 0;
+  el.onpointerdown = (e) => {
+    down = true; _dragMoved = false; startX = e.clientX; startLeft = el.scrollLeft;
+    el.classList.add("dragging");
+  };
+  el.onpointermove = (e) => {
+    if (!down) return;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 5) _dragMoved = true;
+    el.scrollLeft = startLeft - dx;
+  };
+  const up = () => {
+    down = false;
+    el.classList.remove("dragging");
+    setTimeout(() => (_dragMoved = false), 0);
+  };
+  el.onpointerup = up;
+  el.onpointerleave = up;
+}
+
+// Draggable swimlane board: rows are projects (categories), columns are time
+// buckets, each card is a thread. Click a card -> full thread history.
+function renderTimeline(gran = "auto") {
+  const host = $("#projectGrid");
+  if (!host) return;
+  host.className = "tl-board";
+
+  // Group feed items into threads (by email thread, else the item itself).
+  const threads = {};
+  for (const it of timelineFeed) {
+    const key = it.external_thread_id || `i:${it.id}`;
+    const t = (threads[key] ||= { key, items: [], project: "Unsorted" });
+    t.items.push(it);
+    if (it.project) t.project = it.project;
+  }
+  const threadList = Object.values(threads).map((t) => {
+    t.items.sort((a, b) => new Date(b.occurred_at || 0) - new Date(a.occurred_at || 0));
+    const rep = t.items[0];
+    return {
+      repId: rep.id,
+      project: t.project,
+      title: rep.title || "(no subject)",
+      source_type: rep.source_type,
+      date: rep.occurred_at,
+      count: t.items.length,
+    };
+  });
+  if (!threadList.length) {
+    host.innerHTML = '<p class="empty">No items yet. Connect Gmail or Google Calendar, then sync.</p>';
+    return;
+  }
+
+  // Pick a time unit.
+  const times = threadList.map((t) => (t.date ? new Date(t.date).getTime() : null)).filter(Boolean);
+  const rangeDays = times.length ? (Math.max(...times) - Math.min(...times)) / 86400000 : 0;
+  let unit = gran;
+  if (!["day", "week", "month"].includes(gran)) {
+    unit = rangeDays <= 45 ? "day" : rangeDays <= 365 ? "week" : "month";
+  }
+
+  // Buckets present in the data, oldest -> newest.
+  const bucketMap = {};
+  for (const t of threadList) {
+    const b = _bucketFor(t.date, unit);
+    t.bucket = b.key;
+    bucketMap[b.key] ||= b;
+  }
+  const buckets = Object.values(bucketMap).sort((a, b) => a.sort - b.sort);
+
+  // Lanes = projects, busiest first, Unsorted last.
+  const laneMap = {};
+  for (const t of threadList) (laneMap[t.project] ||= []).push(t);
+  const lanes = Object.keys(laneMap).sort((a, b) => {
+    if (a === "Unsorted") return 1;
+    if (b === "Unsorted") return -1;
+    return laneMap[b].length - laneMap[a].length;
+  });
+
+  const card = (t) => {
+    const cls = t.source_type === "google_calendar" ? "calendar" : "gmail";
+    const icon = t.source_type === "google_calendar" ? "31" : "M";
+    return `<button class="tl-card" data-item="${t.repId}"><i class="source ${cls}">${icon}</i><span class="tl-card-title">${escHtml(t.title)}</span>${t.count > 1 ? `<span class="tl-count">${t.count}</span>` : ""}</button>`;
+  };
+
+  let html = `<div class="tl-grid" style="grid-template-columns:170px repeat(${buckets.length},180px)">`;
+  html += `<div class="tl-corner"></div>`;
+  for (const b of buckets) html += `<div class="tl-col-head">${escHtml(b.label)}</div>`;
+  for (const lane of lanes) {
+    html += `<div class="tl-lane-label" title="${escHtml(lane)}">${escHtml(lane)}</div>`;
+    const byBucket = {};
+    for (const t of laneMap[lane]) (byBucket[t.bucket] ||= []).push(t);
+    for (const b of buckets) {
+      html += `<div class="tl-cell">${(byBucket[b.key] || []).map(card).join("")}</div>`;
+    }
+  }
+  html += `</div>`;
+  host.innerHTML = html;
+
+  $$(".tl-card").forEach((c) => (c.onclick = () => {
+    if (_dragMoved) return;
+    openThread(c.dataset.item);
+  }));
+  _wireDragScroll(host);
+  host.scrollLeft = host.scrollWidth; // start at the most recent
+}
+
+function openThread(itemId) {
+  const item = allItems.find((i) => String(i.id) === String(itemId));
+  if (!item) return;
+  const thread = item.external_thread_id
+    ? allItems.filter((i) => i.external_thread_id === item.external_thread_id)
+    : [item];
+  thread.sort(
+    (a, b) => new Date(a.occurred_at || 0) - new Date(b.occurred_at || 0),
+  );
+  const eyebrow = $("#drawer .eyebrow");
+  if (eyebrow) eyebrow.textContent = "THREAD HISTORY";
+  const tabs = $(".tabs");
+  if (tabs) tabs.style.display = "none";
+  $("#drawerTitle").textContent = item.title || "(no subject)";
+  $("#drawerBody").innerHTML =
+    `<div class="thread">${thread
+      .map(
+        (m) =>
+          `<article class="thread-msg"><header><strong>${escHtml(m.sender || "Unknown")}</strong><time>${escHtml(m.when || "")}</time></header><p>${escHtml(m.snippet || "")}</p>${m.source_url ? `<a class="link-btn" href="${m.source_url}" target="_blank" rel="noopener">Open original ↗</a>` : ""}</article>`,
+      )
+      .join("")}</div>`;
+  $("#drawer").classList.add("open");
+  $("#backdrop").classList.add("open");
+  $("#drawer").setAttribute("aria-hidden", "false");
+}
+
+window.setTimelineData = ({ feed = [], all = [] } = {}) => {
+  timelineFeed = feed;
+  allItems = all;
+  renderTimeline($("#timelineFilter")?.value || "auto");
+};
+
 window.updateCurrentUserUI = (displayName) => {
   currentUserDisplayName = displayName || "You";
   currentUserInitials = currentUserDisplayName
@@ -491,26 +686,18 @@ window.updateCurrentUserUI = (displayName) => {
   }
 };
 
-renderProjects();
+// Stage 7: start empty so no fabricated content shows; auth.js fills the
+// dashboard from Supabase after sign-in via window.setDashboardData.
+projects = [];
+actions = [];
+activity = [];
 renderActions();
 renderActivity();
 renderConnectors();
-const opts = projects
-  .map((p) => `<option value="${p.id}">${p.name}</option>`)
-  .join("");
-$("#updateProject").innerHTML = opts;
-$("#uploadProject").insertAdjacentHTML("beforeend", opts);
-$("#projectFilter").onchange = (e) => renderProjects(e.target.value);
-$("#gridBtn").onclick = () => {
-  $("#projectGrid").classList.remove("list");
-  $("#gridBtn").classList.add("active");
-  $("#listBtn").classList.remove("active");
-};
-$("#listBtn").onclick = () => {
-  $("#projectGrid").classList.add("list");
-  $("#listBtn").classList.add("active");
-  $("#gridBtn").classList.remove("active");
-};
+renderTimeline();
+const timelineFilterEl = $("#timelineFilter");
+if (timelineFilterEl)
+  timelineFilterEl.onchange = (e) => renderTimeline(e.target.value);
 $("#closeDrawer").onclick = $("#backdrop").onclick = closeDrawer;
 $$(".tabs button").forEach(
   (b) =>

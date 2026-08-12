@@ -80,12 +80,14 @@ def cmd_run(args, cfg) -> int:
             continue
 
         try:
+            extra = {"query": args.query} if conn.provider == "gmail" else {}
             summary = syncer.sync(
                 cfg.database_url, conn, creds.token,
                 cursor=conn.sync_cursor,
                 force_full=args.full,
                 days=args.days,
                 max_items=args.max,
+                **extra,
             )
             # Advance the cursor only after the batch is safely stored.
             connections_repo.update_sync_state(
@@ -134,6 +136,9 @@ def parse_args() -> argparse.Namespace:
     p_run.add_argument("--full", action="store_true", help="Force a backfill (ignore cursor).")
     p_run.add_argument("--days", type=int, default=30, help="Backfill window in days.")
     p_run.add_argument("--max", type=int, default=50, help="Max items per connection.")
+    p_run.add_argument("--query", default=None,
+                       help="Gmail search string for a targeted backfill "
+                            "(e.g. 'from:codepath.org newer_than:180d'). Gmail only.")
 
     p_status = sub.add_parser("status", help="Show cursors, timestamps, and item counts.")
     p_status.add_argument("--user-id", dest="user_id", default=None)

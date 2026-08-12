@@ -81,6 +81,26 @@
       "sql": "select\n  (select count(*) from public.source_items\n     where include_in_grouping and deduped_at is not null and embedding is not null) as embedded,\n  (select count(*) from public.source_items\n     where include_in_grouping and deduped_at is not null and embedding is null) as not_embedded,\n  (select count(*) from public.item_relationships) as relationship_pairs;"
     },
     {
+      "title": "add_projects_origin",
+      "description": "Stage 5: mark whether a project was created by AI grouping ('ai') or by a user ('user'), so AI re-runs can be reset cleanly.",
+      "sql": "alter table public.projects\n  add column if not exists origin text not null default 'user'\n    check (origin in ('user', 'ai'));\n\ncreate index if not exists projects_user_origin_idx\n  on public.projects(user_id, origin);"
+    },
+    {
+      "title": "check_grouping_progress",
+      "description": "Stage 5 progress: AI vs user projects, and source-item links by method/review status.",
+      "sql": "select 'projects' as kind, origin as detail, count(*) as n\nfrom public.projects group by origin\nunion all\nselect 'links', match_method || '/' || review_status, count(*)\nfrom public.project_source_links group by match_method, review_status\norder by kind, detail;"
+    },
+    {
+      "title": "add_source_items_extracted_at",
+      "description": "Stage 6: add extracted_at marker (NULL = still needs event/action extraction) + queue index.",
+      "sql": "-- Marks when Stage 6 (extract events & actions) processed a linked item.\nalter table public.source_items\n  add column if not exists extracted_at timestamptz;\n\ncreate index if not exists source_items_extract_queue_idx\n  on public.source_items(user_id)\n  where extracted_at is null;"
+    },
+    {
+      "title": "check_extract_progress",
+      "description": "Stage 6 progress: event/action counts per AI project.",
+      "sql": "select p.symbol, p.name,\n  count(distinct e.id) as events,\n  count(distinct a.id) as actions\nfrom public.projects p\nleft join public.project_events e on e.project_id = p.id\nleft join public.project_actions a on a.project_id = p.id\nwhere p.origin = 'ai'\ngroup by p.id, p.symbol, p.name\norder by count(distinct e.id) + count(distinct a.id) desc;"
+    },
+    {
       "title": "create_mvp_indexes",
       "description": "Create indexes used by user-scoped dashboard and processing queries.",
       "sql": "create index projects_user_id_idx on public.projects(user_id);\ncreate index source_connections_user_id_idx on public.source_connections(user_id);\ncreate index source_items_user_status_idx on public.source_items(user_id, processing_status);\ncreate index source_items_occurred_at_idx on public.source_items(user_id, occurred_at desc);\ncreate index project_source_links_project_id_idx on public.project_source_links(project_id);\ncreate index project_source_links_source_item_id_idx on public.project_source_links(source_item_id);\ncreate index project_events_project_date_idx on public.project_events(project_id, event_date desc);\ncreate index project_actions_project_due_idx on public.project_actions(project_id, due_date);\ncreate index user_corrections_user_id_idx on public.user_corrections(user_id);"

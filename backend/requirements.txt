@@ -10,3 +10,6 @@ cryptography>=42,<44
 
 # Stage 4 - Embed & detect relationships (local embeddings; pgvector for storage)
 sentence-transformers>=3.0,<6
+
+# Stage 5 - Group & link to projects (LLM naming/summaries via the Claude API)
+anthropic>=0.40

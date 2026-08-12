@@ -2300,3 +2300,88 @@ body:not(.has-integrations) #addBtn { display: none; }
   #signupDialog .auth-input { min-height: 41px; }
   #signupDialog .auth-message { margin-block: 5px; }
 }
+
+/* ---- Stage 7: chronological timeline feed + thread drawer ---- */
+.timeline-feed { display: flex; flex-direction: column; gap: 8px; }
+.tl-row {
+  display: flex; gap: 12px; width: 100%; text-align: left; cursor: pointer;
+  background: var(--card, #fff); border: 1px solid var(--line, #e6e8ee);
+  border-radius: 12px; padding: 12px 14px; font: inherit; color: inherit;
+  transition: border-color .15s, box-shadow .15s;
+}
+.tl-row:hover { border-color: #c7ccd8; box-shadow: 0 2px 8px rgba(15,23,42,.06); }
+.tl-row .source {
+  flex: 0 0 34px; height: 34px; border-radius: 9px; display: grid;
+  place-items: center; font-size: .8rem; font-weight: 700; color: #fff;
+  background: #4263eb;
+}
+.tl-row .source.gmail { background: #d6584c; }
+.tl-row .source.calendar { background: #1c7ed6; }
+.tl-main { min-width: 0; flex: 1; }
+.tl-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.tl-top strong { font-size: .9rem; }
+.tl-top time { font-size: .75rem; color: #8a90a2; white-space: nowrap; }
+.tl-title {
+  font-weight: 600; margin-top: 1px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.tl-snippet {
+  font-size: .83rem; color: #6b7180; margin-top: 2px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.tl-tag {
+  display: inline-block; margin-top: 6px; font-size: .72rem; font-weight: 600;
+  color: #4263eb; background: #eef2ff; border-radius: 999px; padding: 2px 8px;
+}
+.thread { display: flex; flex-direction: column; gap: 12px; }
+.thread-msg {
+  border: 1px solid var(--line, #e6e8ee); border-radius: 12px; padding: 12px 14px;
+}
+.thread-msg header {
+  display: flex; justify-content: space-between; gap: 10px; align-items: baseline;
+  margin-bottom: 6px;
+}
+.thread-msg header time { font-size: .75rem; color: #8a90a2; }
+.thread-msg p { font-size: .88rem; color: #384152; line-height: 1.5; white-space: pre-wrap; }
+.thread-msg a.link-btn { display: inline-block; margin-top: 8px; }
+
+/* ---- Stage 7 (v2): draggable project x time swimlane board ---- */
+.tl-board { overflow-x: auto; overflow-y: hidden; cursor: grab; padding-bottom: 10px; }
+.tl-board.dragging { cursor: grabbing; user-select: none; }
+.tl-grid { display: grid; gap: 8px; align-items: start; min-width: max-content; }
+.tl-corner { position: sticky; left: 0; z-index: 3; background: #f7f8fb; }
+.tl-col-head {
+  font-size: .7rem; font-weight: 700; color: #8a90a2; text-align: center;
+  padding: 4px 0; text-transform: uppercase; letter-spacing: .03em;
+}
+.tl-lane-label {
+  position: sticky; left: 0; z-index: 2; background: #f7f8fb; font-weight: 700;
+  font-size: .82rem; padding: 8px 12px 8px 2px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center;
+  border-right: 1px solid #e6e8ee;
+}
+.tl-cell {
+  min-height: 44px; display: flex; flex-direction: column; gap: 6px;
+  border-left: 1px dashed #eceef3; padding: 2px 4px;
+}
+.tl-card {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  cursor: pointer; background: #fff; border: 1px solid #e6e8ee; border-radius: 10px;
+  padding: 8px 10px; font: inherit; color: inherit;
+  transition: border-color .15s, box-shadow .15s;
+}
+.tl-card:hover { border-color: #c7ccd8; box-shadow: 0 2px 8px rgba(15,23,42,.06); }
+.tl-card .source {
+  flex: 0 0 22px; height: 22px; border-radius: 6px; display: grid;
+  place-items: center; font-size: .62rem; font-weight: 700; color: #fff; background: #4263eb;
+}
+.tl-card .source.gmail { background: #d6584c; }
+.tl-card .source.calendar { background: #1c7ed6; }
+.tl-card-title {
+  flex: 1; font-size: .8rem; font-weight: 600; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.tl-count {
+  flex: 0 0 auto; font-size: .68rem; font-weight: 700; color: #4263eb;
+  background: #eef2ff; border-radius: 999px; padding: 1px 7px;
+}

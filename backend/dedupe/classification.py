@@ -28,6 +28,45 @@ _NOISE_BODY_PHRASES = (
     "you're receiving this",
 )
 
+# Allowlist: senders/subjects that must be KEPT even if they also look
+# automated (e.g. a "no-reply@" address from a program you care about). Matched
+# as a lowercased substring against sender + subject + body. Add your own
+# people, companies, or programs here.
+_ALLOWLIST_FRAGMENTS = (
+    "codepath",
+    "hackerrank",
+    "orchestrate",
+    "vanguarde",
+    "jubin",
+    "handshake",
+)
+
+# High-precision phrases that signal a genuine, actionable item for the
+# recipient (a task/opportunity/event to act on). If one appears, the item is
+# kept for free without asking the LLM gate. Keep these specific to avoid
+# re-admitting newsletters.
+_RELEVANCE_PHRASES = (
+    "interview invitation",
+    "schedule your interview",
+    "phone screen",
+    "onsite interview",
+    "coding assessment",
+    "technical assessment",
+    "assessment invite",
+    "take-home",
+    "application deadline",
+    "your application",
+    "action required",
+    "next steps",
+    "offer letter",
+    "you have been invited",
+    "you're invited",
+    "please complete",
+    "please submit",
+    "respond by",
+    "career fair",
+)
+
 
 def content_hash(source_type: str, title: str | None, text: str | None) -> str | None:
     """Stable hash of an item's meaningful content, or None if there's no text.
@@ -43,8 +82,18 @@ def content_hash(source_type: str, title: str | None, text: str | None) -> str |
 
 
 def is_noise(sender: str | None, title: str | None, text: str | None) -> bool:
-    """True if the item looks like a newsletter / automated notification."""
+    """True if the item looks like a newsletter / automated notification.
+
+    An allowlist match (known-good sender/subject) always wins, so a program you
+    care about is kept even when it mails from a 'no-reply@' address.
+    """
     sender_l = (sender or "").lower()
+    combined = f"{sender_l}\n{title or ''}\n{text or ''}".lower()
+    # Free keep layer: known senders, or a high-precision actionable phrase.
+    if any(fragment in combined for fragment in _ALLOWLIST_FRAGMENTS):
+        return False
+    if any(phrase in combined for phrase in _RELEVANCE_PHRASES):
+        return False
     if any(fragment in sender_l for fragment in _NOISE_SENDER_FRAGMENTS):
         return True
     body_l = f"{title or ''}\n{text or ''}".lower()

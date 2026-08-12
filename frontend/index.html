@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="Project memory dashboard prototype">
   <title>ThreadLinePMA | AI Project Manager Assistant</title>
-  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/styles.css?v=5">
 </head>
 <body class="auth-pending">
   <div class="app">
@@ -81,8 +81,8 @@
         </section>
 
         <section id="projects" class="project-section">
-          <div class="section-head"><div><h2>Projects found for you</h2><p>Automatically grouped from connected conversations, meetings, and files</p></div><div class="controls"><button id="gridBtn" class="active">▦</button><button id="listBtn">☷</button><select id="projectFilter"><option value="all">All projects</option><option value="urgent">Due this week</option><option value="risk">Needs attention</option></select></div></div>
-          <div class="project-grid" id="projectGrid"></div>
+          <div class="section-head"><div><h2>Your timeline</h2><p>Projects across time — drag sideways to move through dates, click a card for the thread</p></div><div class="controls"><select id="timelineFilter"><option value="auto">Auto zoom</option><option value="day">By day</option><option value="week">By week</option><option value="month">By month</option></select></div></div>
+          <div class="tl-board" id="projectGrid"></div>
         </section>
 
         <section class="lower">
@@ -226,7 +226,7 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config/supabase-config.js"></script>
-  <script src="assets/js/dashboard.js?v=3"></script>
-  <script src="assets/js/auth.js?v=3"></script>
+  <script src="assets/js/dashboard.js?v=5"></script>
+  <script src="assets/js/auth.js?v=5"></script>
 </body>
 </html>

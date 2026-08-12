@@ -16,7 +16,7 @@ ENV_FILE = Path(__file__).parent.parent / ".env"
 load_dotenv(ENV_FILE)
 
 # Change this value when running the file without --title.
-QUERY_TITLE = "check_stage4_progress"
+QUERY_TITLE = "add_projects_origin"
 
 
 def load_queries(query_file: Path = QUERY_FILE) -> dict[str, dict[str, Any]]:
