@@ -121,14 +121,19 @@
     const { data: { session } } = await db.auth.getSession();
     if (!session) throw new Error("Sign in before connecting a source.");
 
-    const { data, error } = await db.functions.invoke("start-google-integration", {
-      body: { provider, redirectTo: `${window.location.origin}/` },
-    });
-    if (error) throw error;
-    if (!data?.authorizationUrl) {
-      throw new Error("The integration service did not return an authorization URL.");
+    const oauthBaseUrl = config.oauthBaseUrl;
+    if (!oauthBaseUrl) {
+      throw new Error("Set oauthBaseUrl in supabase-config.js to the Stage 0 OAuth server.");
     }
-    window.location.assign(data.authorizationUrl);
+
+    // Hand off to the local Stage 0 OAuth server (backend/auth/server.py). It
+    // runs Google consent, stores the encrypted token, writes the connection
+    // row, then redirects back here. A full-page redirect avoids CORS.
+    const startUrl = new URL("/auth/google/start", oauthBaseUrl);
+    startUrl.searchParams.set("providers", provider);
+    startUrl.searchParams.set("user_id", session.user.id);
+    startUrl.searchParams.set("return_to", `${window.location.origin}/`);
+    window.location.assign(startUrl.toString());
   };
 
   element("loginForm").addEventListener("submit", async (event) => {
@@ -271,4 +276,15 @@
   });
 
   db.auth.getSession().then(({ data }) => showAuthenticatedUser(data.session)).catch(console.error);
+
+  // When the Stage 0 OAuth server redirects back with ?connected=<providers>,
+  // confirm it and clean the URL. loadSourceConnections (run on session load)
+  // refreshes the "Connected" state from the source_connections table.
+  const connectedParam = new URLSearchParams(window.location.search).get("connected");
+  if (connectedParam) {
+    const names = connectedParam.replace(/_/g, " ");
+    window.toast?.("Source connected", `${names} is now importing (read-only).`);
+    const cleanUrl = window.location.origin + window.location.pathname;
+    window.history.replaceState({}, document.title, cleanUrl);
+  }
 })();
