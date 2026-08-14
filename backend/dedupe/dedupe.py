@@ -5,11 +5,14 @@ each, whether it proceeds to AI grouping. Excluded rows are kept and retrievable
 but flagged out of grouping with a reason:
 
   - noise               newsletters / automated notifications (per-row rule)
+  - off_topic           not work (personal/entertainment/job-alert) per LLM gate
   - recurring_instance  extra instances of a recurring calendar series
   - duplicate           same content_hash as an earlier kept item
 
-Precedence when several apply: noise > recurring_instance > duplicate. One
-representative per recurring series / duplicate group stays included.
+Precedence when several apply: (noise | off_topic) > recurring_instance >
+duplicate. One representative per recurring series / duplicate group stays
+included. The work-gate runs by default; pass --no-gate for the cheap
+deterministic filter only.
 
 Commands:
   python3 backend/dedupe/dedupe.py run       [--user-id <uuid>] [--limit N]
@@ -49,26 +52,24 @@ def _rep_key(row):
     return (1, row.created_at, str(row.id))
 
 
-def decide(rows, noise_override: set | None = None) -> tuple[dict, dict]:
+def decide(rows, forced_exclusions: dict | None = None) -> tuple[dict, dict]:
     """Compute per-row (hash, reason). Returns (hash_by_id, reason_by_id).
 
     reason_by_id only contains excluded rows; absence means included.
-    `noise_override` holds ids the LLM gate cleared as relevant -- they are
-    treated as not-noise even if the deterministic rule flags them.
+    `forced_exclusions` maps id -> reason ('noise' | 'off_topic') already decided
+    by the classification step; these take precedence over recurring/duplicate.
     """
-    override = noise_override or set()
+    forced = forced_exclusions or {}
     hash_by_id: dict = {}
     reason_by_id: dict = {}
 
-    # 1) Per-row noise (highest precedence), unless the gate cleared it.
+    # 1) Pre-decided exclusions: deterministic noise + LLM off_topic (highest).
     for row in rows:
         hash_by_id[row.id] = cl.content_hash(
             row.source_type, row.title, row.extracted_text
         )
-        if row.id not in override and cl.is_noise(
-            row.sender, row.title, row.extracted_text
-        ):
-            reason_by_id[row.id] = "noise"
+        if row.id in forced:
+            reason_by_id[row.id] = forced[row.id]
 
     # 2) Collapse recurring calendar series (keep one representative).
     series = defaultdict(list)
@@ -100,33 +101,48 @@ def decide(rows, noise_override: set | None = None) -> tuple[dict, dict]:
     return hash_by_id, reason_by_id
 
 
-def _gate_clear(rows, smart: bool) -> set:
-    """Return ids the LLM gate keeps: borderline (noise-flagged) but relevant.
+def _classify_exclusions(rows, use_gate: bool) -> dict:
+    """Return {id: reason} for items excluded before recurring/duplicate.
 
-    Only runs when `smart` is set and an API key is present, and only on rows the
-    deterministic rule would drop -- so cost is bounded to borderline items.
+    Two layers:
+      * Deterministic noise (cheap, always on): obvious bulk/automated mail is
+        excluded as 'noise' without an LLM call.
+      * Work-gate (LLM, on by default): every remaining item is classified
+        work-vs-not-work; non-work items are excluded as 'off_topic'. This is
+        what enforces "work-only", since personal mail from a real person is not
+        'noise' but still isn't work.
     """
-    if not smart:
-        return set()
+    forced: dict = {}
+    for row in rows:
+        if cl.is_noise(row.sender, row.title, row.extracted_text):
+            forced[row.id] = "noise"
+
+    if not use_gate:
+        return forced
+
     api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     if not api_key or api_key.endswith("REPLACE_ME"):
-        print("--smart set but no ANTHROPIC_API_KEY; skipping the LLM gate.")
-        return set()
+        print("Work-gate skipped: no ANTHROPIC_API_KEY set. "
+              "Deterministic noise filter only -- personal/off-topic mail may "
+              "pass through. Re-run with a key (or --no-gate to silence this).")
+        return forced
+
     model = os.getenv("ANTHROPIC_GATE_MODEL", relevance_gate.DEFAULT_GATE_MODEL).strip()
-    borderline = [
-        r for r in rows if cl.is_noise(r.sender, r.title, r.extracted_text)
-    ]
-    if not borderline:
-        return set()
-    print(f"LLM gate: reviewing {len(borderline)} borderline item(s) with {model} ...")
-    cleared = set()
-    for row in borderline:
-        if relevance_gate.is_relevant(
+    candidates = [r for r in rows if r.id not in forced]
+    if not candidates:
+        return forced
+    print(f"Work-gate: classifying {len(candidates)} item(s) work-vs-not-work "
+          f"with {model} ...")
+    off_topic = 0
+    for row in candidates:
+        if not relevance_gate.is_work_related(
             row.sender, row.title, row.extracted_text, api_key=api_key, model=model
         ):
-            cleared.add(row.id)
-    print(f"LLM gate: kept {len(cleared)} of {len(borderline)} as relevant.")
-    return cleared
+            forced[row.id] = "off_topic"
+            off_topic += 1
+    print(f"Work-gate: excluded {off_topic} of {len(candidates)} as off-topic "
+          f"(not work).")
+    return forced
 
 
 def cmd_run(args, cfg) -> int:
@@ -137,9 +153,10 @@ def cmd_run(args, cfg) -> int:
         print("Nothing to deduplicate. Queue is empty.")
         return 0
 
-    cleared = _gate_clear(rows, args.smart)
-    hash_by_id, reason_by_id = decide(rows, noise_override=cleared)
-    tally = {"included": 0, "noise": 0, "recurring_instance": 0, "duplicate": 0}
+    forced = _classify_exclusions(rows, use_gate=not args.no_gate)
+    hash_by_id, reason_by_id = decide(rows, forced_exclusions=forced)
+    tally = {"included": 0, "noise": 0, "off_topic": 0,
+             "recurring_instance": 0, "duplicate": 0}
     for row in rows:
         reason = reason_by_id.get(row.id)
         dedupe_repo.apply_decision(
@@ -154,6 +171,7 @@ def cmd_run(args, cfg) -> int:
     print(f"Processed {len(rows)} row(s):")
     print(f"  included (ready for grouping): {tally['included']}")
     print(f"  excluded - noise:              {tally['noise']}")
+    print(f"  excluded - off_topic (not work): {tally['off_topic']}")
     print(f"  excluded - recurring_instance: {tally['recurring_instance']}")
     print(f"  excluded - duplicate:          {tally['duplicate']}")
     return 0
@@ -167,8 +185,8 @@ def cmd_preview(args, cfg) -> int:
     if not rows:
         print("Nothing pending to preview.")
         return 0
-    cleared = _gate_clear(rows, args.smart)
-    _, reason_by_id = decide(rows, noise_override=cleared)
+    forced = _classify_exclusions(rows, use_gate=not args.no_gate)
+    _, reason_by_id = decide(rows, forced_exclusions=forced)
     for row in rows:
         reason = reason_by_id.get(row.id) or "INCLUDE"
         who = row.sender or "(no sender)"
@@ -188,6 +206,7 @@ def cmd_status(args, cfg) -> int:
     print(f"  excluded - duplicate:     {counts['duplicate']}")
     print(f"  excluded - recurring:     {counts['recurring_instance']}")
     print(f"  excluded - noise:         {counts['noise']}")
+    print(f"  excluded - off_topic:     {counts['off_topic']}")
     return 0
 
 
@@ -203,9 +222,10 @@ def parse_args() -> argparse.Namespace:
         p.add_argument("--user-id", dest="user_id", default=None)
         if name in ("run", "preview"):
             p.add_argument("--limit", type=int, default=1000)
-            p.add_argument("--smart", action="store_true",
-                           help="Use the LLM gate (Haiku 4.5) on borderline "
-                                "noise items to keep genuine tasks/opportunities.")
+            p.add_argument("--no-gate", dest="no_gate", action="store_true",
+                           help="Disable the LLM work-gate and use only the "
+                                "deterministic noise filter (faster/free, but "
+                                "personal/off-topic mail may pass through).")
     return parser.parse_args()
 
 

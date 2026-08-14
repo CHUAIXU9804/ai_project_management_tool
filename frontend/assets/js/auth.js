@@ -235,32 +235,192 @@
         soft: "#eef2ff",
       }));
 
-      window.setDashboardData?.({ projects, actions, activity });
+      // Per-project detail index (summary + events + actions) for the drawer.
+      const projectsById = {};
+      for (const p of projectRows) {
+        projectsById[p.id] = {
+          id: p.id,
+          name: p.name,
+          symbol: p.symbol || "P",
+          summary: p.summary || "",
+          color: p.color || "#4263eb",
+          events: [],
+          actions: [],
+        };
+      }
+      for (const e of events) {
+        const p = projectsById[e.project_id];
+        if (!p) continue;
+        p.events.push({
+          id: e.id,
+          date: fmtDateTime(e.event_date),
+          type: cap(e.event_type),
+          title: e.title,
+          body: e.body || "",
+          person: e.person || "",
+        });
+      }
+      for (const a of actionRows) {
+        const p = projectsById[a.project_id];
+        if (!p) continue;
+        p.actions.push({
+          id: a.id,
+          title: a.title,
+          due: dayLabel(a.due_date).label,
+          done: !!a.completed,
+          assignee: a.assignee || "",
+        });
+      }
 
-      // Chronological timeline of the actual emails/events, newest first.
-      // `all` includes every item (for full thread reconstruction); `feed`
-      // shows the kept (non-noise) items.
-      const itemProject = {};
+      // Build the timeline items (all = for full threads, feed = kept items).
+      const itemProjectId = {};
       for (const link of linkRes.data || []) {
-        if (link.source_item_id && !itemProject[link.source_item_id]) {
-          itemProject[link.source_item_id] = nameById[link.project_id] || "";
+        if (link.source_item_id && !itemProjectId[link.source_item_id]) {
+          itemProjectId[link.source_item_id] = link.project_id;
         }
       }
-      const all = (itemRes.data || []).map((it) => ({
-        id: it.id,
-        source_type: it.source_type,
-        sender: it.sender || "Unknown",
-        title: it.title || "",
-        occurred_at: it.occurred_at,
-        external_thread_id: it.external_thread_id,
-        source_url: it.source_url,
-        when: fmtDateTime(it.occurred_at),
-        snippet: (it.text_excerpt || "").slice(0, 240),
-        project: itemProject[it.id] || "",
-        include: it.include_in_grouping,
-      }));
+      const all = (itemRes.data || []).map((it) => {
+        const pid = itemProjectId[it.id] || null;
+        return {
+          id: it.id,
+          source_type: it.source_type,
+          sender: it.sender || "Unknown",
+          title: it.title || "",
+          occurred_at: it.occurred_at,
+          external_thread_id: it.external_thread_id,
+          source_url: it.source_url,
+          when: fmtDateTime(it.occurred_at),
+          snippet: (it.text_excerpt || "").slice(0, 240),
+          project_id: pid,
+          project: (pid && nameById[pid]) || "",
+          include: it.include_in_grouping,
+        };
+      });
       const feed = all.filter((it) => it.include);
-      window.setTimelineData?.({ feed, all });
+      window.setTimelineData?.({ feed, all, projects: projectsById });
+
+      // Day helpers.
+      const nowMs = Date.now();
+      const startOfDay = (d) => {
+        const x = new Date(d);
+        x.setHours(0, 0, 0, 0);
+        return x.getTime();
+      };
+      const todayK = startOfDay(new Date());
+      const pastDayLabel = (k) => {
+        const diff = (todayK - k) / 86400000;
+        if (diff === 0) return "Today";
+        if (diff === 1) return "Yesterday";
+        return new Date(k).toLocaleDateString(undefined, { month: "short", day: "numeric" }).toUpperCase();
+      };
+      const futureDayLabel = (d) => {
+        const diff = (startOfDay(d) - todayK) / 86400000;
+        if (diff === 0) return "Today";
+        if (diff === 1) return "Tomorrow";
+        return new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      };
+
+      // Needs your attention: projects that have open actions.
+      const openByProject = {};
+      for (const a of actionRows) {
+        if (!a.completed && a.project_id) (openByProject[a.project_id] ||= []).push(a);
+      }
+      const latestEvent = {};
+      for (const e of events) {
+        if (e.project_id && !latestEvent[e.project_id]) latestEvent[e.project_id] = e;
+      }
+      const attention = Object.keys(openByProject)
+        .map((pid) => {
+          const acts = openByProject[pid]
+            .slice()
+            .sort((a, b) => ((a.due_date || "9999") < (b.due_date || "9999") ? -1 : 1));
+          const overdue = acts.filter(
+            (a) => a.due_date && new Date(`${a.due_date}T23:59:59`) < new Date(),
+          ).length;
+          const top = acts[0];
+          const ev = latestEvent[pid];
+          const status = overdue
+            ? `${overdue} overdue action${overdue > 1 ? "s" : ""}`
+            : acts.length > 1
+              ? `${acts.length} unresolved actions`
+              : ev ? ev.title : "Open follow-up";
+          const suggested = top
+            ? `${top.title}${top.due_date ? " · " + dayLabel(top.due_date).label : ""}`
+            : "";
+          const proj = projectRows.find((p) => p.id === pid);
+          return {
+            id: pid,
+            project: (proj && proj.name) || "Project",
+            status,
+            suggested,
+            color: (proj && proj.color) || "#4263eb",
+            sort: overdue ? 0 : 1,
+          };
+        })
+        .sort((a, b) => a.sort - b.sort)
+        .slice(0, 6);
+
+      // Recent project activity: kept items grouped by day, newest first.
+      const groups = [];
+      const seenDay = {};
+      for (const it of feed) {
+        if (!it.occurred_at) continue;
+        const k = startOfDay(it.occurred_at);
+        let g = seenDay[k];
+        if (!g) {
+          g = { label: pastDayLabel(k), items: [] };
+          seenDay[k] = g;
+          groups.push(g);
+        }
+        if (g.items.length < 6) {
+          g.items.push({
+            id: it.id,
+            project: it.project || "Unsorted",
+            title: it.title || "(no subject)",
+            source_type: it.source_type,
+          });
+        }
+      }
+      const activityDays = groups.slice(0, 6);
+
+      // Recent / Upcoming: future-dated items (mostly calendar), soonest first.
+      const upcoming = all
+        .filter((it) => it.occurred_at && new Date(it.occurred_at).getTime() >= nowMs)
+        .sort((a, b) => new Date(a.occurred_at) - new Date(b.occurred_at))
+        .slice(0, 6)
+        .map((it) => ({
+          id: it.id,
+          when: futureDayLabel(it.occurred_at),
+          title: it.title || "(no subject)",
+          source_type: it.source_type,
+        }));
+
+      window.setDashboardData?.({
+        attention,
+        activityDays,
+        upcoming,
+        projects: projectRows.map((p) => ({ id: p.id, name: p.name })),
+      });
+
+      // Summary metrics for the tiles.
+      const linkedProjectIds = new Set(
+        (linkRes.data || []).map((l) => l.project_id).filter(Boolean),
+      );
+      const activeProjects = linkedProjectIds.size || projectRows.length;
+      const needAttention = Object.keys(openByProject).length;
+      const openActions = actionRows.filter((a) => !a.completed).length;
+      const waiting = Math.max(0, activeProjects - needAttention);
+      const weekAgo = nowMs - 7 * 86400000;
+      const thisWeek = all.filter(
+        (it) => it.occurred_at && new Date(it.occurred_at).getTime() >= weekAgo,
+      ).length;
+      const dueThisWeek = actionRows.filter(
+        (a) =>
+          !a.completed && a.due_date &&
+          new Date(`${a.due_date}T23:59:59`) >= new Date() &&
+          new Date(`${a.due_date}T00:00:00`).getTime() <= nowMs + 7 * 86400000,
+      ).length;
+      window.setMetrics?.({ activeProjects, dueThisWeek, needAttention, waiting, thisWeek, openActions });
     } catch (err) {
       console.error("Failed to load project data.", err);
     }

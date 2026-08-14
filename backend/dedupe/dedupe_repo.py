@@ -120,7 +120,10 @@ def progress(database_url: str, user_id: str | None = None) -> dict:
                     ) as recurring_instance,
                     count(*) filter (
                         where deduped_at is not null and exclusion_reason = 'noise'
-                    ) as noise
+                    ) as noise,
+                    count(*) filter (
+                        where deduped_at is not null and exclusion_reason = 'off_topic'
+                    ) as off_topic
                 from public.source_items
                 where true {user_filter}
                 """,
@@ -133,4 +136,5 @@ def progress(database_url: str, user_id: str | None = None) -> dict:
         "duplicate": row[2],
         "recurring_instance": row[3],
         "noise": row[4],
+        "off_topic": row[5],
     }

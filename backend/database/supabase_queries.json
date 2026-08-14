@@ -101,6 +101,21 @@
       "sql": "select p.symbol, p.name,\n  count(distinct e.id) as events,\n  count(distinct a.id) as actions\nfrom public.projects p\nleft join public.project_events e on e.project_id = p.id\nleft join public.project_actions a on a.project_id = p.id\nwhere p.origin = 'ai'\ngroup by p.id, p.symbol, p.name\norder by count(distinct e.id) + count(distinct a.id) desc;"
     },
     {
+      "title": "purge_all_source_content",
+      "description": "DESTRUCTIVE: delete ALL ingested Gmail/Calendar content and its derived rows (source_items, events, actions, links, relationships, projects). Keeps source_connections + source_secrets so you can re-sync.",
+      "sql": "delete from public.project_events;\ndelete from public.project_actions;\ndelete from public.item_relationships;\ndelete from public.project_source_links;\ndelete from public.projects;\ndelete from public.source_items;"
+    },
+    {
+      "title": "check_content_counts",
+      "description": "Row counts for the content tables (verify a purge left them empty).",
+      "sql": "select 'source_items' as t, count(*) n from public.source_items\nunion all select 'project_events', count(*) from public.project_events\nunion all select 'project_actions', count(*) from public.project_actions\nunion all select 'project_source_links', count(*) from public.project_source_links\nunion all select 'item_relationships', count(*) from public.item_relationships\nunion all select 'projects', count(*) from public.projects\nunion all select 'source_connections', count(*) from public.source_connections\nunion all select 'source_secrets', count(*) from public.source_secrets\norder by t;"
+    },
+    {
+      "title": "purge_tokens_and_disconnect",
+      "description": "DESTRUCTIVE: also delete the stored OAuth tokens and connections (full disconnect). Run purge_all_source_content first if you also want the content gone.",
+      "sql": "delete from public.source_secrets;\ndelete from public.source_connections;"
+    },
+    {
       "title": "create_mvp_indexes",
       "description": "Create indexes used by user-scoped dashboard and processing queries.",
       "sql": "create index projects_user_id_idx on public.projects(user_id);\ncreate index source_connections_user_id_idx on public.source_connections(user_id);\ncreate index source_items_user_status_idx on public.source_items(user_id, processing_status);\ncreate index source_items_occurred_at_idx on public.source_items(user_id, occurred_at desc);\ncreate index project_source_links_project_id_idx on public.project_source_links(project_id);\ncreate index project_source_links_source_item_id_idx on public.project_source_links(source_item_id);\ncreate index project_events_project_date_idx on public.project_events(project_id, event_date desc);\ncreate index project_actions_project_due_idx on public.project_actions(project_id, due_date);\ncreate index user_corrections_user_id_idx on public.user_corrections(user_id);"

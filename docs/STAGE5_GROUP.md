@@ -65,23 +65,30 @@ projects (cascades their links) before rebuilding; user-created projects
 At ~40 included items the naming calls total a few cents on Sonnet 5. It scales
 with the number of clusters, not raw items, and only re-runs on `--reset`.
 
-## The Stage 3 relevance filter (layered)
+## The Stage 3 work-only filter (layered)
 
-Stage 5 is only as good as what Stage 3 lets through. The filter has three
-layers, cheapest first:
+Stage 5 is only as good as what Stage 3 lets through. Stage 3 keeps **work**
+content only — projects, tasks, meetings, conferences, work training, project
+discussions, and interviews the person attends/conducts — and drops everything
+else. It has three layers, cheapest first:
 
-1. **Allowlist** (`_ALLOWLIST_FRAGMENTS` in `classification.py`) — known senders
-   / programs (e.g. Handshake, CodePath, HackerRank) are kept even from a
-   `no-reply@` address. Free.
-2. **Actionable phrases** (`_RELEVANCE_PHRASES`) — high-precision cues like
-   "interview invitation", "next steps", "application deadline". Free.
-3. **LLM gate** (`relevance_gate.py`, Haiku 4.5) — for anything the noise rule
-   would still drop, asks "is this a genuine task/opportunity/event for this
-   person?" Runs only on borderline items, so cost is a fraction of a cent per
-   run. Enable with `dedupe.py run --smart`; it fails closed (a call error keeps
-   the item filtered).
+1. **Deterministic noise rule** (`is_noise` in `classification.py`) — obvious
+   bulk/automated mail (newsletters, `no-reply@`, marketing, `unsubscribe`) is
+   excluded as `noise` without an LLM call. Free.
+2. **Allowlist + work-actionable phrases** (`_ALLOWLIST_FRAGMENTS`,
+   `_RELEVANCE_PHRASES`) — your own work senders/domains (add them here) and
+   generic work cues like "action required" / "please review" skip the noise
+   rule so they reach the work-gate rather than being auto-dropped. Free.
+3. **LLM work-gate** (`relevance_gate.py`, Haiku 4.5) — runs **by default** on
+   every non-noise item and classifies it work-vs-not-work; non-work items
+   (personal errands, entertainment, job alerts, application confirmations) are
+   excluded as `off_topic`. This is the layer that enforces work-only, since
+   personal mail from a real person isn't "noise". It fails **open** (a call
+   error keeps the item) so genuine work is never lost to a transient failure.
+   Needs `ANTHROPIC_API_KEY`; pass `dedupe.py run --no-gate` to disable it and
+   use the deterministic filter alone.
 
-Add your own names/phrases to `classification.py`; enable the gate per run.
+Add your own work senders/phrases to `classification.py`.
 
 ## Design decisions (per Architecture.md)
 

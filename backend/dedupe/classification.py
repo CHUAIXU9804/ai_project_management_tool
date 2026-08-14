@@ -28,43 +28,30 @@ _NOISE_BODY_PHRASES = (
     "you're receiving this",
 )
 
-# Allowlist: senders/subjects that must be KEPT even if they also look
-# automated (e.g. a "no-reply@" address from a program you care about). Matched
-# as a lowercased substring against sender + subject + body. Add your own
-# people, companies, or programs here.
-_ALLOWLIST_FRAGMENTS = (
-    "codepath",
-    "hackerrank",
-    "orchestrate",
-    "vanguarde",
-    "jubin",
-    "handshake",
+# Allowlist: senders/subjects that must be KEPT past the deterministic noise
+# rule even if they look automated (e.g. a "no-reply@" address from a WORK
+# system you rely on -- your ticketing tool, CI, HR portal). Matched as a
+# lowercased substring against sender + subject + body. Add your own work
+# senders/domains here. Note: passing this layer only means the item skips the
+# cheap noise rule; the work-gate (Stage 3 LLM) still decides work-vs-personal.
+_ALLOWLIST_FRAGMENTS: tuple[str, ...] = (
+    # e.g. "jira", "@acmecorp.com", "workday", "confluence"
 )
 
-# High-precision phrases that signal a genuine, actionable item for the
-# recipient (a task/opportunity/event to act on). If one appears, the item is
-# kept for free without asking the LLM gate. Keep these specific to avoid
-# re-admitting newsletters.
+# High-precision phrases that signal a genuine, actionable WORK item for the
+# recipient (a task/deadline/meeting to act on). If one appears, the item skips
+# the cheap noise rule and is instead handed to the work-gate. Kept generic and
+# work-flavoured -- job-application/job-alert phrasing was removed on purpose so
+# recruiter blasts and application confirmations are not auto-admitted.
 _RELEVANCE_PHRASES = (
-    "interview invitation",
-    "schedule your interview",
-    "phone screen",
-    "onsite interview",
-    "coding assessment",
-    "technical assessment",
-    "assessment invite",
-    "take-home",
-    "application deadline",
-    "your application",
     "action required",
     "next steps",
-    "offer letter",
-    "you have been invited",
-    "you're invited",
     "please complete",
     "please submit",
+    "please review",
     "respond by",
-    "career fair",
+    "you have been invited",
+    "you're invited",
 )
 
 

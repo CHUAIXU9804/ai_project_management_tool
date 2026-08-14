@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="Project memory dashboard prototype">
   <title>ThreadLinePMA | AI Project Manager Assistant</title>
-  <link rel="stylesheet" href="assets/css/styles.css?v=5">
+  <link rel="stylesheet" href="assets/css/styles.css?v=8">
 </head>
 <body class="auth-pending">
   <div class="app">
@@ -13,8 +13,8 @@
       <a class="brand" href="#"><span class="logo">≋</span> ThreadLinePMA</a>
       <nav aria-label="Primary navigation">
         <button class="nav active" data-target="overview"><span>⌂</span>Overview</button>
-        <button class="nav" data-target="projects"><span>▦</span>Projects <b>5</b></button>
-        <button class="nav" data-target="actions"><span>✓</span>My actions <b class="warn">8</b></button>
+        <button class="nav" data-target="projects"><span>▦</span>Projects <b id="navProjectCount">0</b></button>
+        <button class="nav" data-target="actions"><span>✓</span>My actions <b class="warn" id="navActionCount">0</b></button>
         <button class="nav" id="sourcesNav"><span>↗</span>Sources</button>
       </nav>
       <div class="side-section">
@@ -70,24 +70,32 @@
 
         <div class="workspace-heading">
           <div><p class="eyebrow">AUTOMATICALLY GENERATED OUTPUT</p><h2>Your organized workspace</h2><p>Projects, decisions, and actions appear here after your sources are imported.</p></div>
-          <span class="preview-label">Preview data</span>
         </div>
 
         <section class="metrics" aria-label="Workspace summary">
-          <article><i class="blue">▦</i><div><small>Active projects</small><strong>5</strong><span><b>2</b> due this week</span></div></article>
-          <article><i class="orange">!</i><div><small>Open actions</small><strong id="actionCount">8</strong><span><b>3</b> overdue</span></div></article>
-          <article><i class="purple">◇</i><div><small>Recent decisions</small><strong>6</strong><span>in the last 7 days</span></div></article>
-          <article><i class="green">↗</i><div><small>Items connected</small><strong>247</strong><span><b class="positive">+18</b> since yesterday</span></div></article>
+          <article><i class="blue">▦</i><div><small>Active projects</small><strong id="statProjects">0</strong><span><b id="statDueWeek">0</b> due this week</span></div></article>
+          <article><i class="orange">!</i><div><small>Need attention</small><strong id="statAttention">0</strong><span>open items</span></div></article>
+          <article><i class="purple">◇</i><div><small>Waiting</small><strong id="statWaiting">0</strong><span>awaiting reply</span></div></article>
+          <article><i class="green">↗</i><div><small>This week</small><strong id="statWeek">0</strong><span>new items</span></div></article>
         </section>
 
-        <section id="projects" class="project-section">
-          <div class="section-head"><div><h2>Your timeline</h2><p>Projects across time — drag sideways to move through dates, click a card for the thread</p></div><div class="controls"><select id="timelineFilter"><option value="auto">Auto zoom</option><option value="day">By day</option><option value="week">By week</option><option value="month">By month</option></select></div></div>
-          <div class="tl-board" id="projectGrid"></div>
+        <section class="panel attention-panel" id="attention">
+          <div class="section-head"><div><h2>Needs your attention</h2><p>Projects with open follow-ups</p></div></div>
+          <div id="attentionList"></div>
         </section>
 
-        <section class="lower">
-          <article class="panel" id="actions"><div class="section-head"><div><h2>Needs your attention</h2><p>Actions extracted from recent conversations</p></div><button class="link-btn" id="allActionsBtn">View all</button></div><div id="actionList"></div></article>
-          <article class="panel"><div class="section-head"><div><h2>Recent activity</h2><p>Across all connected sources</p></div><button class="icon" aria-label="Filter activity">≡</button></div><div id="activityList"></div></article>
+        <section class="panel activity-panel">
+          <div class="section-head"><div><h2>Recent project activity</h2><p>What changed, newest first</p></div><button class="link-btn" id="viewTimelineBtn">View timeline ▸</button></div>
+          <div id="activityTimeline"></div>
+          <div class="timeline-wrap" id="timelineWrap" hidden>
+            <div class="tl-hint"><small>Drag sideways to move through time</small><select id="timelineFilter"><option value="auto">Auto zoom</option><option value="day">By day</option><option value="week">By week</option><option value="month">By month</option></select></div>
+            <div class="tl-board" id="projectGrid"></div>
+          </div>
+        </section>
+
+        <section class="panel upcoming-panel">
+          <div class="section-head"><div><h2>Recent / Upcoming</h2><p>Meetings and deadlines ahead</p></div></div>
+          <div id="upcomingList"></div>
         </section>
       </div>
     </main>
@@ -226,7 +234,7 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config/supabase-config.js"></script>
-  <script src="assets/js/dashboard.js?v=5"></script>
-  <script src="assets/js/auth.js?v=5"></script>
+  <script src="assets/js/dashboard.js?v=8"></script>
+  <script src="assets/js/auth.js?v=8"></script>
 </body>
 </html>

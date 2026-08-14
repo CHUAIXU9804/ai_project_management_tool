@@ -466,17 +466,67 @@ window.showToast = toast;
 
 // Stage 7: auth.js loads the real projects/events/actions from Supabase and
 // hands them here to replace whatever is currently rendered.
-window.setDashboardData = ({ projects: p = [], actions: a = [], activity: act = [] } = {}) => {
-  projects = p;
-  actions = a;
-  activity = act;
-  renderProjects();
-  renderActions();
-  renderActivity();
-  const badge = $("#actionCount");
-  if (badge) badge.textContent = actions.filter((x) => !x.done).length;
-  const opts = projects
-    .map((project) => `<option value="${project.id}">${project.name}</option>`)
+function renderAttention(list = []) {
+  const host = $("#attentionList");
+  if (!host) return;
+  host.innerHTML = list.length
+    ? list
+        .map(
+          (a) =>
+            `<div class="att-card clickable" data-project="${a.id || ""}" style="--color:${a.color || "#4263eb"}"><strong>${escHtml(a.project)}</strong><p class="att-status">${escHtml(a.status)}</p>${a.suggested ? `<p class="att-suggest">Suggested: ${escHtml(a.suggested)}</p>` : ""}</div>`,
+        )
+        .join("")
+    : '<p class="empty">Nothing needs your attention right now.</p>';
+  $$("#attentionList .att-card").forEach((c) => {
+    if (c.dataset.project) c.onclick = () => openProjectDrawer(c.dataset.project);
+  });
+}
+
+function renderActivityFeed(days = []) {
+  const host = $("#activityTimeline");
+  if (!host) return;
+  host.innerHTML = days.length
+    ? days
+        .map(
+          (d) =>
+            `<div class="day-group"><h4>${escHtml(d.label)}</h4>${d.items
+              .map((it) => {
+                const isCal = it.source_type === "google_calendar";
+                const icon = isCal ? "📅" : "✉";
+                const label = isCal ? "Calendar" : "Gmail";
+                return `<div class="act-row clickable" data-item="${it.id || ""}"><span class="act-dot"></span><div class="act-body"><strong>${escHtml(it.project)} — ${escHtml(it.title)}</strong><small><span class="src">${icon}</span>${label}</small></div></div>`;
+              })
+              .join("")}</div>`,
+        )
+        .join("")
+    : '<p class="empty">No recent activity.</p>';
+  $$("#activityTimeline .act-row").forEach((r) => {
+    if (r.dataset.item) r.onclick = () => openItem(r.dataset.item);
+  });
+}
+
+function renderUpcoming(list = []) {
+  const host = $("#upcomingList");
+  if (!host) return;
+  host.innerHTML = list.length
+    ? list
+        .map(
+          (u) =>
+            `<div class="up-row clickable" data-item="${u.id || ""}"><span class="up-when">${escHtml(u.when)}</span><span class="up-title">${escHtml(u.title)}</span></div>`,
+        )
+        .join("")
+    : '<p class="empty">Nothing upcoming.</p>';
+  $$("#upcomingList .up-row").forEach((r) => {
+    if (r.dataset.item) r.onclick = () => openItem(r.dataset.item);
+  });
+}
+
+window.setDashboardData = ({ attention = [], activityDays = [], upcoming = [], projects: projList = [] } = {}) => {
+  renderAttention(attention);
+  renderActivityFeed(activityDays);
+  renderUpcoming(upcoming);
+  const opts = projList
+    .map((p) => `<option value="${p.id}">${escHtml(p.name)}</option>`)
     .join("");
   const updateSelect = $("#updateProject");
   if (updateSelect) updateSelect.innerHTML = opts;
@@ -485,6 +535,7 @@ window.setDashboardData = ({ projects: p = [], actions: a = [], activity: act = 
 // ---- Stage 7: chronological timeline of source items + thread drawer ----
 let timelineFeed = [];
 let allItems = [];
+let projectIndex = {};
 
 function escHtml(value = "") {
   const el = document.createElement("div");
@@ -625,36 +676,95 @@ function renderTimeline(gran = "auto") {
   host.scrollLeft = host.scrollWidth; // start at the most recent
 }
 
-function openThread(itemId) {
-  const item = allItems.find((i) => String(i.id) === String(itemId));
-  if (!item) return;
-  const thread = item.external_thread_id
-    ? allItems.filter((i) => i.external_thread_id === item.external_thread_id)
-    : [item];
-  thread.sort(
-    (a, b) => new Date(a.occurred_at || 0) - new Date(b.occurred_at || 0),
-  );
-  const eyebrow = $("#drawer .eyebrow");
-  if (eyebrow) eyebrow.textContent = "THREAD HISTORY";
+function _projectBlocks(project) {
+  if (!project) return "";
+  let html = `<div class="dp-head"><span class="dp-symbol" style="--color:${project.color || "#4263eb"}">${escHtml(project.symbol || "P")}</span><div><strong>${escHtml(project.name)}</strong>${project.summary ? `<p>${escHtml(project.summary)}</p>` : ""}</div></div>`;
+  const openActs = (project.actions || []).filter((a) => !a.done);
+  if (openActs.length) {
+    html += `<div class="dp-block"><h4>Open actions</h4>${openActs
+      .map((a) => `<div class="dp-action"><span>${escHtml(a.title)}</span><em>${escHtml(a.due || "")}</em></div>`)
+      .join("")}</div>`;
+  }
+  if ((project.events || []).length) {
+    html += `<div class="dp-block"><h4>Project timeline</h4>${project.events
+      .slice(0, 8)
+      .map((e) => `<div class="dp-event"><time>${escHtml(e.date)} · ${escHtml(e.type)}</time><strong>${escHtml(e.title)}</strong>${e.body ? `<p>${escHtml(e.body)}</p>` : ""}</div>`)
+      .join("")}</div>`;
+  }
+  return html;
+}
+
+function _threadBlock(items, heading) {
+  return `<div class="dp-block"><h4>${escHtml(heading)}</h4><div class="thread">${items
+    .map(
+      (m) =>
+        `<article class="thread-msg"><header><strong>${escHtml(m.sender || "Unknown")}</strong><time>${escHtml(m.when || "")}</time></header>${m.title ? `<div class="tm-subject">${escHtml(m.title)}</div>` : ""}<p>${escHtml(m.snippet || "")}</p>${m.source_url ? `<a class="link-btn" href="${m.source_url}" target="_blank" rel="noopener">Open original ↗</a>` : ""}</article>`,
+    )
+    .join("")}</div></div>`;
+}
+
+function _openDrawer(title, eyebrow, bodyHtml) {
+  const eb = $("#drawer .eyebrow");
+  if (eb) eb.textContent = eyebrow;
   const tabs = $(".tabs");
   if (tabs) tabs.style.display = "none";
-  $("#drawerTitle").textContent = item.title || "(no subject)";
-  $("#drawerBody").innerHTML =
-    `<div class="thread">${thread
-      .map(
-        (m) =>
-          `<article class="thread-msg"><header><strong>${escHtml(m.sender || "Unknown")}</strong><time>${escHtml(m.when || "")}</time></header><p>${escHtml(m.snippet || "")}</p>${m.source_url ? `<a class="link-btn" href="${m.source_url}" target="_blank" rel="noopener">Open original ↗</a>` : ""}</article>`,
-      )
-      .join("")}</div>`;
+  $("#drawerTitle").textContent = title;
+  $("#drawerBody").innerHTML = bodyHtml;
   $("#drawer").classList.add("open");
   $("#backdrop").classList.add("open");
   $("#drawer").setAttribute("aria-hidden", "false");
 }
 
-window.setTimelineData = ({ feed = [], all = [] } = {}) => {
+// Click an item (activity row / upcoming / timeline card): show its project
+// details + the full thread conversation.
+function openItem(itemId) {
+  const item = allItems.find((i) => String(i.id) === String(itemId));
+  if (!item) return;
+  const project = item.project_id ? projectIndex[item.project_id] : null;
+  const thread = item.external_thread_id
+    ? allItems.filter((i) => i.external_thread_id === item.external_thread_id)
+    : [item];
+  thread.sort((a, b) => new Date(a.occurred_at || 0) - new Date(b.occurred_at || 0));
+  _openDrawer(
+    item.title || (project && project.name) || "(no subject)",
+    project ? "PROJECT & THREAD" : "THREAD",
+    _projectBlocks(project) + _threadBlock(thread, "Conversation"),
+  );
+}
+
+// Click a project (attention card): show the project details + its messages.
+function openProjectDrawer(projectId) {
+  const project = projectIndex[projectId];
+  if (!project) return;
+  const items = allItems
+    .filter((i) => i.project_id === projectId)
+    .sort((a, b) => new Date(b.occurred_at || 0) - new Date(a.occurred_at || 0));
+  _openDrawer(project.name, "PROJECT", _projectBlocks(project) + _threadBlock(items, "Related messages"));
+}
+
+// Back-compat alias for the swimlane cards.
+const openThread = openItem;
+
+window.setTimelineData = ({ feed = [], all = [], projects = {} } = {}) => {
   timelineFeed = feed;
   allItems = all;
+  projectIndex = projects || {};
   renderTimeline($("#timelineFilter")?.value || "auto");
+};
+
+// Populate the summary tiles + sidebar counts from real data.
+window.setMetrics = (m = {}) => {
+  const set = (id, val) => {
+    const el = $("#" + id);
+    if (el) el.textContent = val ?? 0;
+  };
+  set("statProjects", m.activeProjects);
+  set("statDueWeek", m.dueThisWeek);
+  set("statAttention", m.needAttention);
+  set("statWaiting", m.waiting);
+  set("statWeek", m.thisWeek);
+  set("navProjectCount", m.activeProjects);
+  set("navActionCount", m.openActions);
 };
 
 window.updateCurrentUserUI = (displayName) => {
@@ -691,13 +801,27 @@ window.updateCurrentUserUI = (displayName) => {
 projects = [];
 actions = [];
 activity = [];
-renderActions();
-renderActivity();
 renderConnectors();
-renderTimeline();
 const timelineFilterEl = $("#timelineFilter");
 if (timelineFilterEl)
   timelineFilterEl.onchange = (e) => renderTimeline(e.target.value);
+const viewTimelineBtn = $("#viewTimelineBtn");
+if (viewTimelineBtn)
+  viewTimelineBtn.onclick = () => {
+    const wrap = $("#timelineWrap");
+    const feed = $("#activityTimeline");
+    if (!wrap) return;
+    if (wrap.hasAttribute("hidden")) {
+      wrap.removeAttribute("hidden");
+      if (feed) feed.style.display = "none";
+      viewTimelineBtn.textContent = "Hide timeline ◂";
+      renderTimeline($("#timelineFilter")?.value || "auto");
+    } else {
+      wrap.setAttribute("hidden", "");
+      if (feed) feed.style.display = "";
+      viewTimelineBtn.textContent = "View timeline ▸";
+    }
+  };
 $("#closeDrawer").onclick = $("#backdrop").onclick = closeDrawer;
 $$(".tabs button").forEach(
   (b) =>
