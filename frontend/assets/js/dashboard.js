@@ -469,13 +469,8 @@ function renderUpcoming(list = []) {
   });
 }
 
-window.setDashboardData = ({ upcoming = [], projects: projList = [] } = {}) => {
+window.setDashboardData = ({ upcoming = [] } = {}) => {
   renderUpcoming(upcoming);
-  const opts = projList
-    .map((p) => `<option value="${p.id}">${escHtml(p.name)}</option>`)
-    .join("");
-  const updateSelect = $("#updateProject");
-  if (updateSelect) updateSelect.innerHTML = opts;
 };
 
 // ---- Stage 7: catch-up hero + digest ----
@@ -1523,111 +1518,41 @@ if ($("#boardFilterClear"))
     if ($("#boardDueTo")) $("#boardDueTo").value = "";
     renderBoard();
   };
-$("#uploadBtn").onclick = () => $("#uploadDialog").showModal();
-$("#addBtn").onclick = () => $("#updateDialog").showModal();
 $("#connectAppsBtn").onclick = () => $("#sourcesDialog").showModal();
 $("#manageSources").onclick = $("#sourcesNav").onclick = () =>
   $("#sourcesDialog").showModal();
 $$(".close-dialog").forEach(
   (b) => (b.onclick = () => b.closest("dialog").close()),
 );
-let chosen = [];
-function filePreview() {
-  $("#fileList").innerHTML = chosen
-    .map(
-      (f, i) =>
-        `<div class="file-preview"><span>${f.name} · ${Math.round(f.size / 1024)} KB</span><button type="button" data-i="${i}">Remove</button></div>`,
-    )
-    .join("");
-  $$("[data-i]").forEach(
-    (b) =>
-    (b.onclick = () => {
-      chosen.splice(+b.dataset.i, 1);
-      filePreview();
-    }),
-  );
-}
-$("#fileInput").onchange = (e) => {
-  chosen = [...e.target.files];
-  filePreview();
-};
-["dragenter", "dragover"].forEach((n) =>
-  $("#dropZone").addEventListener(n, (e) => {
-    e.preventDefault();
-    $("#dropZone").classList.add("drag");
-  }),
-);
-["dragleave", "drop"].forEach((n) =>
-  $("#dropZone").addEventListener(n, (e) => {
-    e.preventDefault();
-    $("#dropZone").classList.remove("drag");
-  }),
-);
-$("#dropZone").ondrop = (e) => {
-  chosen = [...e.dataTransfer.files];
-  filePreview();
-};
-$("#processBtn").onclick = () => {
-  if (!chosen.length)
-    return toast("Choose at least one file", "Nothing is selected yet.");
-  const n = chosen.length;
-  chosen = [];
-  filePreview();
-  $("#uploadDialog").close();
-  toast(
-    `${n} file${n > 1 ? "s" : ""} queued`,
-    "Ready for your future Python processing API.",
-  );
-};
-$("#updateForm").onsubmit = (e) => {
-  e.preventDefault();
-  const p = projects.find((p) => p.id === $("#updateProject").value);
-  p.events.unshift({
-    id: Date.now(),
-    date: "Just now",
-    type: $("#updateType").value,
-    title: $("#updateTitle").value,
-    body: $("#updateDetails").value,
-    person: `Added by ${currentUserDisplayName}`,
-    color: p.color,
-  });
-  e.target.reset();
-  $("#updateDialog").close();
-  toast("Update added", `Added to ${p.name}'s timeline.`);
-  if (activeProject?.id === p.id) renderDrawer();
-};
-$("#scanBtn").onclick = () => {
+$("#scanBtn").onclick = async () => {
   if (!connectors.some((connector) => connector.connected)) {
     $("#sourcesDialog").showModal();
     return;
   }
   const b = $("#syncBox");
   b.classList.add("loading");
+  $("#scanBtn").disabled = true;
   $("#scanBtn").textContent = "Scanning…";
-  setTimeout(() => {
-    b.classList.remove("loading");
-    $("#scanBtn").textContent = "Scan for updates";
+  try {
+    const result = await window.runPipelineScan?.();
     $("#syncStatus").textContent = "Last scan just now";
-    toast(
-      "Workspace scan complete",
-      "3 new items matched to existing projects.",
-    );
-  }, 1400);
-};
-$("#searchInput").oninput = (e) => {
-  const q = e.target.value.toLowerCase().trim();
-  $$(".project-card").forEach((c) => {
-    const p = projects.find((p) => p.id === c.dataset.id),
-      hay =
-        `${p.name} ${p.summary} ${p.events.map((e) => e.title + " " + e.body).join(" ")}`.toLowerCase();
-    c.style.display = !q || hay.includes(q) ? "" : "none";
-  });
+    if (!result) {
+      toast("Could not scan", "The local pipeline server (backend/auth/server.py) isn't reachable.");
+    } else if (result.ok) {
+      toast("Workspace scan complete", "All pipeline stages finished cleanly.");
+    } else {
+      const failed = (result.steps || []).filter((s) => !s.ok).map((s) => s.stage);
+      toast("Scan finished with errors", `Check the terminal running the pipeline server -- ${failed.join(", ") || "a stage"} reported a problem.`);
+    }
+  } catch (err) {
+    toast("Could not scan", err?.message || "The local pipeline server isn't reachable.");
+  } finally {
+    b.classList.remove("loading");
+    $("#scanBtn").disabled = false;
+    $("#scanBtn").textContent = "Scan for updates";
+  }
 };
 document.onkeydown = (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-    e.preventDefault();
-    $("#searchInput").focus();
-  }
   if (e.key === "Escape") closeDrawer();
 };
 $("#menuBtn").onclick = () => $("#sidebar").classList.toggle("open");

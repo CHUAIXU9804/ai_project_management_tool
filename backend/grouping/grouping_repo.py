@@ -72,6 +72,22 @@ def fetch_edges(
             return [(str(a), str(b), float(s)) for a, b, s in cursor.fetchall()]
 
 
+def fetch_linked_items(database_url: str, user_id: str) -> dict[str, str]:
+    """source_item_id -> project_id for every item already linked to any
+    project (any match_method) -- what an incremental run must not re-cluster."""
+    with psycopg.connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select source_item_id, project_id
+                from public.project_source_links
+                where user_id = %s
+                """,
+                (user_id,),
+            )
+            return {str(item_id): str(project_id) for item_id, project_id in cursor.fetchall()}
+
+
 def ai_projects_exist(database_url: str, user_id: str) -> int:
     with psycopg.connect(database_url) as connection:
         with connection.cursor() as cursor:

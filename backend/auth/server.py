@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import html
 import secrets
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -28,7 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import requests
-from flask import Flask, redirect, request
+from flask import Flask, jsonify, redirect, request
 from google_auth_oauthlib.flow import Flow
 
 import connections_repo
@@ -37,6 +38,40 @@ from token_store import TokenStore
 
 config = load_config()
 app = Flask(__name__)
+
+# repo_root/backend/auth/server.py -> repo_root.
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# Stages 1-7, in order, run as subprocesses -- not imported in-process, since
+# each stage script does its own `sys.path.insert` + `import config` and
+# co-importing several into one long-running Flask process would collide on
+# those identically-named local modules. A subprocess per stage is exactly
+# what already works from the terminal, just triggered by a click instead.
+PIPELINE_STEPS: list[tuple[str, list[str]]] = [
+    ("sync", ["backend/ingest/sync.py", "run"]),
+    ("normalize", ["backend/normalize/normalize.py", "run"]),
+    ("dedupe", ["backend/dedupe/dedupe.py", "run"]),
+    ("embed", ["backend/embed/relate.py", "embed"]),
+    ("relate", ["backend/embed/relate.py", "relate"]),
+    ("group", ["backend/grouping/group.py", "run"]),
+    ("extract", ["backend/extract/extract.py", "run"]),
+    ("digest", ["backend/digest/summarize.py", "run"]),
+]
+
+# Frontend dev origins allowed to call /pipeline/run (this is the one route
+# on this server reached via fetch() rather than a full-page redirect, so it
+# needs its own CORS allowance -- everything else here doesn't).
+_ALLOWED_ORIGINS = {"http://localhost:8000", "http://127.0.0.1:8000"}
+
+
+@app.after_request
+def _add_cors_headers(resp):
+    origin = request.headers.get("Origin", "")
+    if origin in _ALLOWED_ORIGINS:
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return resp
 
 # Short-lived CSRF/state store: maps the opaque `state` value we send to Google
 # to the request context we need back on the callback. In-memory is fine for a
@@ -327,6 +362,51 @@ def connections():
     return _page(
         "Connections", "<h1>Connections</h1>" + body + "<p><a href='/'>Home</a></p>"
     )
+
+
+@app.route("/pipeline/run", methods=["POST", "OPTIONS"])
+def pipeline_run():
+    """Run Stages 1-7 for one user, synchronously, as the "Scan for updates"
+    button's real handler -- exactly the CLI sequence documented for manual
+    testing, just triggered by a click instead of eight terminal commands.
+
+    Each stage runs as its own subprocess (see PIPELINE_STEPS) and every
+    stage is attempted regardless of an earlier one failing: they're each
+    idempotent/cheap when there's nothing new, so a stalled Gmail connection
+    (say) still lets the rest of the pipeline report accurately instead of
+    the whole run aborting on the first error.
+    """
+    if request.method == "OPTIONS":
+        return "", 204
+    if not config.is_complete:
+        return jsonify(ok=False, error="Server not configured.", steps=[]), 503
+
+    payload = request.get_json(silent=True) or {}
+    user_id = (request.args.get("user_id") or payload.get("user_id") or "").strip()
+    if not user_id:
+        return jsonify(ok=False, error="user_id required.", steps=[]), 400
+
+    steps = []
+    for name, argv in PIPELINE_STEPS:
+        try:
+            proc = subprocess.run(
+                [sys.executable, *argv, "--user-id", user_id],
+                cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=300,
+            )
+            steps.append({
+                "stage": name,
+                "ok": proc.returncode == 0,
+                "output": (proc.stdout or "").strip(),
+                "error": (proc.stderr or "").strip() if proc.returncode != 0 else "",
+            })
+        except subprocess.TimeoutExpired:
+            steps.append({
+                "stage": name, "ok": False, "output": "",
+                "error": "Timed out after 300s.",
+            })
+
+    ok = all(s["ok"] for s in steps)
+    return jsonify(ok=ok, steps=steps), (200 if ok else 207)
 
 
 def main() -> None:
