@@ -358,13 +358,6 @@ main {
   margin: auto;
   padding: 34px;
 }
-.welcome {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 24px;
-  margin-bottom: 26px;
-}
 .eyebrow {
   margin-bottom: 6px;
   color: #8993a2;
@@ -372,16 +365,20 @@ main {
   font-weight: 800;
   letter-spacing: 1.1px;
 }
-.welcome h1 {
-  margin-bottom: 7px;
-  font-size: 32px;
-  letter-spacing: -0.7px;
-}
-.welcome > div > p:last-child,
 .section-head p {
   margin-bottom: 0;
   color: var(--muted);
 }
+/* Minimal, disappearing onboarding prompt -- shown only until the first
+   source is connected (replaces the old permanent Integration Hub card and
+   "Good afternoon" banner, both now redundant with the catch-up hero). */
+.connect-prompt {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 16px; margin-bottom: 18px; padding: 14px 18px;
+  border: 1px solid #dce3ff; border-radius: 12px; background: #f4f6ff;
+  font-size: .85rem; color: #364156;
+}
+.connect-prompt span { max-width: 60ch; }
 .ai-summary {
   min-width: 310px;
   display: flex;
@@ -1193,8 +1190,13 @@ dialog footer {
   .content {
     padding: 24px 17px;
   }
-  .welcome {
+  .catchup-hero {
     flex-direction: column;
+    align-items: flex-start;
+  }
+  .connect-prompt {
+    flex-direction: column;
+    align-items: flex-start;
   }
   .ai-summary {
     width: 100%;
@@ -1223,8 +1225,8 @@ dialog footer {
   .metrics {
     grid-template-columns: 1fr;
   }
-  .welcome h1 {
-    font-size: 26px;
+  .catchup-copy h1 {
+    font-size: 22px;
   }
   .section-head {
     align-items: flex-start;
@@ -2427,7 +2429,7 @@ body:not(.has-integrations) #addBtn { display: none; }
 .clickable { cursor: pointer; }
 .att-card.clickable:hover,
 .act-row.clickable:hover,
-.up-row.clickable:hover { background: #f5f7ff; border-radius: 10px; }
+.up-row.clickable:hover { background: #f5f7ff; }
 .act-row.clickable, .up-row.clickable { border-radius: 10px; padding-left: 6px; padding-right: 6px; }
 
 .dp-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
@@ -2435,23 +2437,297 @@ body:not(.has-integrations) #addBtn { display: none; }
   flex: 0 0 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
   font-weight: 800; color: #fff; background: var(--color, #4263eb);
 }
+.dp-head-body { flex: 1 1 auto; min-width: 0; }
 .dp-head strong { font-size: 1rem; }
 .dp-head p { font-size: .85rem; color: #6b7180; margin-top: 3px; }
+/* Project summary (Stage 5, AI-generated) with inline verify/edit -- the
+   text and its "✓ / ✎" controls share a row so approving or editing it
+   feels like the same verify-in-place pattern as timeline events below. */
+.dp-summary { display: flex; align-items: flex-start; gap: 10px; margin-top: 3px; }
+.dp-summary p { flex: 1 1 auto; min-width: 0; margin: 0; font-size: .85rem; color: #6b7180; }
 .dp-block { margin-top: 16px; }
 .dp-block h4 {
   font-size: .72rem; letter-spacing: .05em; text-transform: uppercase;
   color: #8a90a2; margin-bottom: 8px;
 }
+/* Action items header: the status filter chips sit next to a link out to
+   the same items on the Task Board, pre-filtered to this project. */
+.dp-actions-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.dp-actions-head h4 { margin-bottom: 0; }
+.dp-due-link { font-size: .78rem; white-space: nowrap; }
+.dp-action-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; }
+/* Explains that event dates are AI-interpreted (Stage 6), not the message's
+   send time, so a divergence reads as expected behavior, not a bug. */
+.dp-legend {
+  font-size: .78rem; color: var(--muted); margin: 14px 0 0; line-height: 1.5;
+}
+.dp-ai-flag {
+  display: inline-block; font-size: .66rem; font-weight: 700; color: #b35a1f;
+  background: #fff1e7; border-radius: 999px; padding: 1px 8px; margin-right: 6px;
+  vertical-align: middle;
+}
+.dp-ai-note { display: block; margin-top: 4px; color: #b35a1f; font-size: .76rem; }
+/* "Since your last catch-up" -- the same boundary as the Overview digest,
+   so this reads as "here's the detail behind what brought you here". */
+.dp-recent {
+  padding: 12px; margin: 16px -12px 0; border-radius: 12px;
+  background: #f7f8ff; border: 1px solid #e4e8ff;
+}
+.dp-recent h4 { color: #4a5bd0; }
+/* Complete history: collapsed by default, everything before the checkpoint. */
+.dp-history { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.dp-history-toggle { font-size: .82rem; }
+.dp-history-body { margin-top: 10px; }
 .dp-action {
-  display: flex; justify-content: space-between; gap: 10px; align-items: center;
+  display: flex; flex-direction: column; gap: 8px;
   border: 1px solid #e6e8ee; border-radius: 10px; padding: 8px 12px; margin-bottom: 6px;
   font-size: .86rem;
 }
-.dp-action em { font-style: normal; color: #8a90a2; font-size: .78rem; white-space: nowrap; }
-.dp-event {
-  border-left: 2px solid #e6e8ee; padding: 2px 0 10px 12px; margin-left: 4px;
+/* Title + verify/reject controls on top; status + due date underneath -- the
+   status select is the same three states as the Task Board columns, so
+   changing it here is the same correction as dragging a card there. */
+.dp-action-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.dp-action-top strong { font-weight: 650; min-width: 0; }
+.dp-action-meta { display: flex; align-items: center; gap: 10px; }
+.dp-action-status {
+  padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px;
+  background: #fafbfd; font-size: .74rem; font-weight: 700; color: #4a5163; cursor: pointer;
 }
-.dp-event time { font-size: .72rem; color: #8a90a2; }
-.dp-event strong { display: block; font-size: .88rem; margin-top: 2px; }
+.dp-action em { font-style: normal; color: #8a90a2; font-size: .78rem; white-space: nowrap; }
+.dp-action-verify button { width: 26px; height: 26px; font-size: .74rem; }
+/* A day's worth of events: one shared time + tag(s) header, then each item
+   as its own compact row -- instead of every item repeating the same time
+   and near-identical tags in its own full card. */
+.dp-event-group {
+  border-left: 2px solid #e6e8ee; padding: 2px 0 12px 12px; margin: 0 0 6px 4px;
+}
+.dp-event-group-head {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;
+}
+.dp-event-group-head time { font-size: .72rem; color: #8a90a2; margin-right: 2px; }
+.dp-cluster-count {
+  font-size: .68rem; font-weight: 700; color: #6d7889;
+  background: #f2f3f7; border-radius: 999px; padding: 1px 8px;
+}
+.dp-event {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+  padding: 6px 8px; border-radius: 8px;
+}
+.dp-event + .dp-event { margin-top: 2px; }
+.dp-event-main { flex: 1 1 auto; min-width: 0; }
+.dp-event-main.clickable { cursor: pointer; transition: background .15s ease; }
+.dp-event-main.clickable:hover { background: #f5f7ff; border-radius: 6px; }
+.dp-event strong { display: block; font-size: .88rem; }
 .dp-event p { font-size: .83rem; color: #6b7180; margin-top: 2px; }
+
+/* ---- Stage 7: catch-up hero, digest, and AI-inferred board ---- */
+.catchup-hero {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 22px 24px; margin-bottom: 20px; border-radius: 16px;
+  background: linear-gradient(135deg, #eef2ff, #f7f9ff); border: 1px solid #dce3ff;
+}
+.catchup-copy h1 { margin: 4px 0 6px; font-size: 26px; letter-spacing: -0.6px; }
+.catchup-since { color: var(--muted); font-size: .88rem; }
+.catchup-since strong { color: var(--ink); }
+.catchup-actions { display: flex; gap: 10px; }
+.catchup-override {
+  display: flex; align-items: center; gap: 8px; flex-basis: 100%;
+  padding-top: 14px; margin-top: 6px; border-top: 1px dashed #dce3ff;
+  font-size: .82rem; color: var(--muted);
+}
+.catchup-override input[type="date"] {
+  padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: .82rem;
+}
+
+.catchup-panel { margin-bottom: 16px; }
+#catchupList { display: flex; flex-direction: column; }
+
+/* Rail: a continuous connecting line with a dot per project, standing in for
+   the earlier avatar badges -- ties the digest cards together as one timeline
+   of what changed, rather than a contact-list look. */
+.digest-item { display: flex; align-items: stretch; }
+.digest-time {
+  flex: 0 0 92px; padding-top: 17px; text-align: right;
+  font-size: .72rem; font-weight: 600; color: var(--muted); white-space: nowrap;
+}
+.digest-rail { flex: 0 0 26px; position: relative; }
+.digest-line {
+  position: absolute; top: 0; bottom: 0; left: 50%; width: 2px;
+  background: #e2e5ee; transform: translateX(-50%);
+}
+.digest-item:first-child .digest-line { top: 26px; }
+.digest-item:last-child .digest-line { bottom: auto; height: 26px; }
+.digest-item:only-child .digest-line { display: none; }
+.digest-dot {
+  position: absolute; left: 50%; top: 20px; transform: translateX(-50%);
+  width: 12px; height: 12px; border-radius: 50%; z-index: 1;
+  background: var(--color, #4263eb); box-shadow: 0 0 0 3px #fff;
+}
+
+.digest-card {
+  flex: 1 1 auto; min-width: 0; display: flex; gap: 14px; align-items: flex-start;
+  margin: 4px 0 12px; padding: 14px 16px; border-radius: 16px; border: 1px solid #edeff4;
+  background: #fff; box-shadow: 0 1px 2px rgba(23, 32, 45, .04);
+  transition: box-shadow .16s ease, transform .16s ease, border-color .16s ease;
+}
+.digest-item.clickable:hover .digest-card {
+  border-color: #e2e6f5; box-shadow: 0 10px 24px rgba(23, 32, 45, .09);
+  transform: translateY(-1px);
+}
+.digest-body { flex: 1 1 auto; min-width: 0; }
+.digest-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.digest-top strong { font-size: .93rem; }
+.digest-count {
+  flex: 0 0 auto; font-size: .68rem; font-weight: 700; color: #6d7889;
+  background: #f2f3f7; border-radius: 999px; padding: 2px 9px; white-space: nowrap;
+}
+.digest-sentence { margin: 5px 0 8px; font-size: .85rem; color: #4a5163; line-height: 1.45; }
+
+/* Tags: every card gets exactly one urgency tag (Needs Your Reply / For Your
+   Info), plus whichever content-type tags actually apply. Each kind gets its
+   own hue so they read apart at a glance, not just by label text. */
+.digest-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.digest-tag {
+  font-size: .68rem; font-weight: 700; border-radius: 999px;
+  padding: 2px 9px; white-space: nowrap;
+}
+/* Solid fills read as clearly distinct at a glance, unlike light pastels which
+   wash together. Each kind sits on its own hue, spread around the wheel
+   (red / amber / green / teal / blue / purple) rather than clustered in the
+   same warm or cool family, so no two are a step apart and easy to mix up.
+   FYI stays deliberately calm/low-contrast -- it's the "nothing needs you"
+   case, so it should recede next to the louder, actionable tags. Shared
+   taxonomy with the board: Tasks/Meetings/Decisions/Issue-Blockers/
+   Update-Change, so each keeps this same color wherever it shows up. */
+.tag-reply { background: #dc3e3e; color: #fff; }    /* red -- most urgent */
+.tag-issue { background: #c98a1f; color: #fff; }    /* amber -- blocker/risk/disagreement */
+.tag-meeting { background: #2fa84a; color: #fff; }  /* green -- a meeting happened */
+.tag-update { background: #0e93b5; color: #fff; }   /* teal -- general update/change */
+.tag-task { background: #3a5fe0; color: #fff; }     /* blue -- owned by you */
+.tag-decision { background: #8b3fd6; color: #fff; } /* purple -- a decision was made */
+.tag-fyi { background: #e7e9ef; color: #46506b; }   /* calm neutral -- low urgency, by design */
+
+.digest-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.digest-people { font-size: .76rem; color: #8a90a2; }
+.digest-verify { display: flex; gap: 6px; flex: 0 0 auto; }
+.digest-verify button {
+  width: 30px; height: 30px; border-radius: 999px; border: 1px solid #edeff4;
+  background: #fafbfd; color: #8a90a2; font-size: .85rem;
+  transition: background .16s ease, color .16s ease, border-color .16s ease;
+}
+.digest-verify .verify-ok:hover { background: #e8f7f0; border-color: #bfe6d4; color: #17865c; }
+.digest-verify .verify-fix:hover { background: #eef2ff; border-color: #dbe2ff; color: #4263eb; }
+.digest-verify .verify-ok.done { background: #17865c; border-color: #17865c; color: #fff; }
+/* Same confirm/edit palette, reused for the project summary and action-item
+   verify controls; reject gets its own warning hue since it removes the item. */
+.digest-verify .summary-verify-ok:hover,
+.digest-verify .action-verify-ok:hover { background: #e8f7f0; border-color: #bfe6d4; color: #17865c; }
+.digest-verify .summary-verify-fix:hover,
+.digest-verify .action-verify-fix:hover { background: #eef2ff; border-color: #dbe2ff; color: #4263eb; }
+.digest-verify .action-verify-reject:hover { background: #fdeceb; border-color: #f6c9c4; color: #c33b2e; }
+
+.board-panel { margin-top: 16px; }
+/* Shared toggle-chip look for both the board's project filter and the
+   project page's status filter -- a plain outline pill until active, then
+   filled with the chip's own color (per-project on the board, the default
+   blue for status). */
+.board-filter-chip {
+  font-size: .74rem; font-weight: 700; border-radius: 999px; padding: 4px 12px;
+  border: 1px solid var(--line); background: #fff; color: #6d7889; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.board-filter-chip:hover { border-color: #c7cee0; }
+.board-filter-chip.active { background: var(--color, #4263eb); border-color: var(--color, #4263eb); color: #fff; }
+.board-filters {
+  display: flex; flex-wrap: wrap; gap: 18px; align-items: center;
+  padding: 4px 2px 16px; margin-bottom: 14px; border-bottom: 1px dashed var(--line);
+}
+.board-filter-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.board-filter-label {
+  font-size: .72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--muted);
+}
+.board-filter-group input[type="date"] {
+  padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: .8rem; background: #fff;
+}
+/* Multi-select project filter: a closed button that opens a checkbox menu,
+   instead of one chip per project (doesn't scale) or a native <select
+   multiple> (needs a modifier key to pick more than one, no closed state). */
+.board-filter-dropdown { position: relative; }
+.board-filter-dd-btn {
+  padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff;
+  font-size: .8rem; font-weight: 650; color: var(--ink); cursor: pointer;
+}
+.board-filter-dd-btn:hover { border-color: #c7cee0; }
+.board-filter-dd-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
+  min-width: 210px; max-height: 260px; overflow-y: auto;
+  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(23, 32, 45, .14); padding: 6px;
+}
+.board-filter-dd-menu label {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px;
+  font-size: .82rem; cursor: pointer; white-space: nowrap;
+}
+.board-filter-dd-menu label:hover { background: #f5f7ff; }
+.board-filter-dd-menu input[type="checkbox"] { accent-color: var(--blue); cursor: pointer; }
+.board-filter-dd-empty { padding: 8px; font-size: .8rem; color: var(--muted); }
+.board-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.board-col { background: #f8f9fc; border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-height: 80px; }
+.board-col h4 {
+  font-size: .74rem; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); margin: 2px 4px 10px;
+}
+.board-list { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
+.board-list.drag-over { background: #eef2ff; border-radius: 8px; }
+.board-card {
+  border: 1px solid #e6e8ee; border-left: 3px solid var(--color, #4263eb);
+  border-radius: 10px; padding: 8px 10px; background: #fff; cursor: grab;
+  transition: box-shadow .15s ease, border-color .15s ease;
+}
+.board-card:hover { box-shadow: 0 4px 14px rgba(23, 32, 45, .08); border-color: #dde1ea; }
+.board-card strong { display: block; font-size: .83rem; }
+.board-card small { color: #8a90a2; font-size: .74rem; }
+/* Tag row: which project this belongs to, plus its due date if it has one --
+   same small-pill language as the digest tags, not just plain small text. */
+.board-card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.board-chip {
+  font-size: .68rem; font-weight: 700; border-radius: 999px;
+  padding: 2px 9px; white-space: nowrap;
+}
+.board-chip-project { background: color-mix(in srgb, var(--color, #4263eb) 14%, white); color: var(--color, #4263eb); }
+.board-chip-due { background: #f2f3f7; color: #6d7889; }
+.board-chip-overdue { background: #fdeceb; color: #c33b2e; }
+.empty.small { font-size: .78rem; padding: 6px 2px; }
+
+@media (max-width: 900px) {
+  .board-grid { grid-template-columns: repeat(2, 1fr); }
+}
 .tm-subject { font-size: .82rem; font-weight: 600; margin-bottom: 4px; }
+
+/* "Projects" nav view: browse every project, not just recently-changed ones. */
+.projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.project-tile {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px 16px; border-radius: 16px; border: 1px solid #edeff4;
+  background: #fff; box-shadow: 0 1px 2px rgba(23, 32, 45, .04);
+  transition: box-shadow .16s ease, transform .16s ease, border-color .16s ease;
+}
+.project-tile.clickable:hover {
+  border-color: #e2e6f5; box-shadow: 0 10px 24px rgba(23, 32, 45, .09);
+  transform: translateY(-1px);
+}
+.pt-symbol {
+  flex: 0 0 38px; width: 38px; height: 38px; border-radius: 11px;
+  display: grid; place-items: center; font-weight: 800; font-size: .8rem;
+  color: #fff; background: var(--color, #4263eb);
+}
+.pt-body { flex: 1 1 auto; min-width: 0; }
+.pt-body strong { display: block; font-size: .9rem; }
+.pt-body p { margin: 4px 0; font-size: .8rem; color: #6b7180; }
+.pt-body small { color: #8a90a2; font-size: .74rem; }
+
+/* Project detail: a real full-page view (grid hidden while it's shown), not
+   a partial-width overlay with the grid still visible behind it. */
+#backToProjectsBtn { margin-bottom: 14px; font-size: .85rem; }
+.project-detail-panel { max-width: 760px; }

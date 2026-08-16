@@ -46,7 +46,7 @@
       "from": "pm.raj@acmecorp.com",
       "to": ["testxu495@acmecorp.com", "lena.dev@acmecorp.com", "architect.sam@acmecorp.com"],
       "days_ago": 3,
-      "body": "Draft Q3 roadmap attached. Please review the proposed priorities and leave comments by Friday. We'll finalize at the planning meeting. Action required: rank your top three items."
+      "body": "Draft Q3 roadmap attached. Please review the proposed priorities and leave comments before the planning meeting. Action required: rank your top three items."
     },
     {
       "id": "demo-gmail-021",
@@ -61,11 +61,11 @@
     {
       "id": "demo-gmail-030",
       "thread_id": "demo-thread-interview-panel",
-      "subject": "Interview panel: Backend Engineer candidate (Thu 2pm)",
+      "subject": "Interview panel: Backend Engineer candidate",
       "from": "recruiting@acmecorp.com",
       "to": ["testxu495@acmecorp.com"],
       "days_ago": 1,
-      "body": "You're on the interview panel for a Backend Engineer candidate this Thursday at 2pm. Please review the candidate's resume beforehand and focus your round on system design. Submit your feedback in the hiring tool within 24 hours of the interview."
+      "body": "You're on the interview panel for a Backend Engineer candidate -- see the calendar invite for the exact time. Please review the candidate's resume beforehand and focus your round on system design. Submit your feedback in the hiring tool within 24 hours of the interview."
     },
 
     {

@@ -105,6 +105,7 @@ def create_project(
     color: str,
     soft_color: str,
     members: list[str],
+    category: str = "project",
 ) -> str:
     with psycopg.connect(database_url) as connection:
         with connection.cursor() as cursor:
@@ -112,11 +113,11 @@ def create_project(
                 """
                 insert into public.projects
                     (user_id, name, symbol, summary, color, soft_color,
-                     members, origin, updated_at)
-                values (%s, %s, %s, %s, %s, %s, %s, 'ai', now())
+                     members, category, origin, updated_at)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, 'ai', now())
                 returning id
                 """,
-                (user_id, name, symbol, summary, color, soft_color, members),
+                (user_id, name, symbol, summary, color, soft_color, members, category),
             )
             return str(cursor.fetchone()[0])
 

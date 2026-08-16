@@ -62,27 +62,35 @@ def insert_event(database_url, user_id, project_id, source_item_id, event, color
                 """
                 insert into public.project_events
                     (user_id, project_id, source_item_id, event_type, title,
-                     body, person, event_date, confidence, user_edited, color)
-                values (%s, %s, %s, %s, %s, %s, %s, coalesce(%s, now()), %s, false, %s)
+                     body, person, event_date, requires_response, confidence,
+                     user_edited, color)
+                values (%s, %s, %s, %s, %s, %s, %s, coalesce(%s, now()), %s, %s, false, %s)
                 """,
                 (user_id, project_id, source_item_id, event["event_type"],
                  event["title"], event["body"], event["person"],
-                 event["event_date"], round(event["confidence"], 4), color),
+                 event["event_date"], event.get("requires_response"),
+                 round(event["confidence"], 4), color),
             )
 
 
 def insert_action(database_url, user_id, project_id, source_item_id, action, color) -> None:
+    # `completed` is kept as a derived legacy alias of `status` (Architecture
+    # Stage 6) so anything still reading the old boolean stays correct.
+    status = action.get("status") or "not_started"
+    completed = status == "completed"
     with psycopg.connect(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 insert into public.project_actions
                     (user_id, project_id, source_item_id, title, assignee,
-                     due_date, completed, confidence, user_edited, color)
-                values (%s, %s, %s, %s, %s, %s, false, %s, false, %s)
+                     due_date, status, backlog, completed, confidence,
+                     user_edited, color)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, false, %s)
                 """,
                 (user_id, project_id, source_item_id, action["title"],
-                 action["assignee"], action["due_date"],
+                 action["assignee"], action["due_date"], status,
+                 bool(action.get("backlog", False)), completed,
                  round(action["confidence"], 4), color),
             )
 
@@ -130,6 +138,41 @@ def reset(database_url: str, user_id: str) -> dict:
             )
             requeued = cursor.rowcount
     return {"events_deleted": events, "actions_deleted": actions, "requeued": requeued}
+
+
+def status_breakdown(database_url: str, user_id: str) -> dict:
+    """Board + response counts for this user -- a quick smoke test after extraction."""
+    with psycopg.connect(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                select
+                    count(*) filter (where status = 'not_started'),
+                    count(*) filter (where status = 'in_progress'),
+                    count(*) filter (where status = 'completed'),
+                    count(*) filter (where backlog)
+                from public.project_actions
+                where user_id = %s
+                """,
+                (user_id,),
+            )
+            a = cursor.fetchone()
+            cursor.execute(
+                """
+                select
+                    count(*) filter (where requires_response is true),
+                    count(*) filter (where requires_response is false),
+                    count(*) filter (where requires_response is null)
+                from public.project_events
+                where user_id = %s
+                """,
+                (user_id,),
+            )
+            e = cursor.fetchone()
+    return {
+        "not_started": a[0], "in_progress": a[1], "completed": a[2], "backlog": a[3],
+        "requires_response": e[0], "no_response_needed": e[1], "not_yet_classified": e[2],
+    }
 
 
 def progress(database_url: str, user_id: str) -> dict:

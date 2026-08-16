@@ -20,6 +20,13 @@ _SYSTEM = (
     "a one-sentence summary. Reply with ONLY a JSON object, no prose."
 )
 
+# Fixed category set for the digest's tag pills (Stage 7). 'project' is the
+# generic default and deliberately not shown as a tag in the UI -- only the
+# more specific categories are, so tags stay informative rather than noisy.
+_CATEGORIES = (
+    "project", "meeting_series", "training", "conference", "interview", "admin",
+)
+
 # Stopwords for the offline keyword fallback.
 _STOP = {
     "the", "and", "for", "with", "your", "you", "our", "re", "fwd", "fw",
@@ -59,6 +66,9 @@ def keyword_name(items: list[dict]) -> dict:
         "summary": f"Auto-grouped from {len(items)} related item(s).",
         "symbol": symbol,
         "coherence": 0.5,
+        # Without the LLM there's no reliable way to classify the domain, so
+        # this stays generic rather than guessing from keywords.
+        "category": "project",
     }
 
 
@@ -72,6 +82,7 @@ def _build_prompt(items: list[dict]) -> str:
             f"| {item.get('occurred_at') or '?'} "
             f"| {(item.get('excerpt') or '')[:160]}"
         )
+    categories = ", ".join(_CATEGORIES)
     return (
         "These items appear to belong to one project:\n"
         + "\n".join(lines)
@@ -79,6 +90,11 @@ def _build_prompt(items: list[dict]) -> str:
         '  "name": a concise project name (<= 6 words),\n'
         '  "summary": one sentence describing the project,\n'
         '  "symbol": a single uppercase letter,\n'
+        f'  "category": one of {categories} -- pick "meeting_series" for '
+        'recurring 1:1s/standing meetings, "training" for courses/workshops, '
+        '"conference" for summits/external events, "interview" for hiring/'
+        'candidate panels, "admin" for administrative items, and "project" '
+        "for everything else (the default),\n"
         '  "coherence": a number 0.0-1.0 for how strongly these items belong '
         "to a single project."
     )
@@ -110,10 +126,14 @@ def name_project(
         data = _extract_json(text)
         if not data or "name" not in data:
             return keyword_name(items)
+        category = str(data.get("category", "")).strip().lower()
+        if category not in _CATEGORIES:
+            category = "project"
         return {
             "name": str(data.get("name", "")).strip()[:60] or "Untitled Project",
             "summary": str(data.get("summary", "")).strip()[:500],
             "symbol": (str(data.get("symbol", "")).strip()[:1] or "P").upper(),
+            "category": category,
             "coherence": _clamp01(data.get("coherence", 0.5)),
         }
     except Exception:  # noqa: BLE001 - fall back rather than fail the stage

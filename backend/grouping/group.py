@@ -140,6 +140,7 @@ def cmd_run(args, cfg) -> int:
             cfg.database_url, user_id,
             name=named["name"], symbol=named["symbol"], summary=named["summary"],
             color=color, soft_color=soft, members=_member_initials(members),
+            category=named.get("category", "project"),
         )
         # Link confidence blends structural cohesion with the LLM's coherence.
         confidence = round(min(1.0, 0.5 * cohesion + 0.5 * named["coherence"]), 4)

@@ -108,10 +108,14 @@ def cmd_preview(args, cfg) -> int:
         result = extractor.extract(_item_dict(it), api_key=api_key, model=model)
         print(f"[{it.source_type}] {(it.title or '(untitled)')[:70]}")
         for ev in result["events"]:
-            print(f"   event  ({ev['event_type']}, {ev['confidence']:.2f}) {ev['title'][:60]}")
+            rr = ev.get("requires_response")
+            rr_label = "needs reply" if rr else ("no reply needed" if rr is False else "unclassified")
+            print(f"   event  ({ev['event_type']}, {ev['confidence']:.2f}, {rr_label}) "
+                  f"{ev['title'][:60]}")
         for ac in result["actions"]:
             due = ac["due_date"] or "no date"
-            print(f"   action ({ac['confidence']:.2f}, due {due}) {ac['title'][:60]}")
+            tag = ac["status"] + (", backlog" if ac["backlog"] else "")
+            print(f"   action ({ac['confidence']:.2f}, due {due}, {tag}) {ac['title'][:60]}")
     print("\n(preview only - no rows were modified)")
     return 0
 
@@ -127,6 +131,15 @@ def cmd_status(args, cfg) -> int:
     print(f"  timeline events:  {counts['events']}")
     print(f"  action items:     {counts['actions']}")
     print(f"  queued (linked, not extracted): {counts['queued']}")
+
+    board = extract_repo.status_breakdown(cfg.database_url, user_id)
+    print("\nBoard (project_actions.status / backlog)")
+    print(f"  not_started: {board['not_started']}   in_progress: {board['in_progress']}   "
+          f"completed: {board['completed']}   backlog: {board['backlog']}")
+    print("Waiting list (project_events.requires_response)")
+    print(f"  requires_response: {board['requires_response']}   "
+          f"no_response_needed: {board['no_response_needed']}   "
+          f"not_yet_classified: {board['not_yet_classified']}")
     return 0
 
 

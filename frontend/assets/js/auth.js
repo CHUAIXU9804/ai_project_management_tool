@@ -153,17 +153,21 @@
     };
 
     try {
-      const [projRes, evRes, acRes, linkRes, itemRes] = await Promise.all([
+      const [projRes, evRes, acRes, linkRes, itemRes, profileRes] = await Promise.all([
         db.from("projects").select("*").eq("user_id", user.id).order("updated_at", { ascending: false }),
         db.from("project_events").select("*").eq("user_id", user.id).order("event_date", { ascending: false }),
         db.from("project_actions").select("*").eq("user_id", user.id).order("due_date", { ascending: true, nullsFirst: false }),
         db.from("project_source_links").select("project_id, source_item_id, source_items(source_type)").eq("user_id", user.id),
         db.from("source_items").select("id, source_type, sender, title, occurred_at, external_thread_id, source_url, text_excerpt, include_in_grouping").eq("user_id", user.id).order("occurred_at", { ascending: false, nullsFirst: false }),
+        db.from("profiles").select("last_catchup_at").eq("id", user.id).maybeSingle(),
       ]);
       const failed = [projRes, evRes, acRes, linkRes, itemRes].find((r) => r.error);
       if (failed) {
         console.error("Unable to load dashboard data.", failed.error);
         return;
+      }
+      if (profileRes.error) {
+        console.error("Unable to load catch-up checkpoint; defaulting to a 7-day window.", profileRes.error);
       }
 
       const projectRows = projRes.data || [];
@@ -248,26 +252,42 @@
           actions: [],
         };
       }
+      // Lets the UI show, right next to an event, when its AI-interpreted
+      // date diverges from the real timestamp of the message it came from --
+      // instead of leaving that only discoverable by cross-referencing
+      // "Related messages" by hand.
+      const itemById = {};
+      for (const it of itemRes.data || []) itemById[it.id] = it;
+
       for (const e of events) {
         const p = projectsById[e.project_id];
         if (!p) continue;
+        const sourceItem = e.source_item_id ? itemById[e.source_item_id] : null;
         p.events.push({
           id: e.id,
           date: fmtDateTime(e.event_date),
+          dateMs: e.event_date ? new Date(e.event_date).getTime() : null,
           type: cap(e.event_type),
           title: e.title,
           body: e.body || "",
           person: e.person || "",
+          source_item_id: e.source_item_id || null,
+          sourceWhen: sourceItem?.occurred_at ? fmtDateTime(sourceItem.occurred_at) : null,
+          sourceWhenMs: sourceItem?.occurred_at ? new Date(sourceItem.occurred_at).getTime() : null,
         });
       }
       for (const a of actionRows) {
         const p = projectsById[a.project_id];
         if (!p) continue;
+        const rawStatus = a.status || (a.completed ? "completed" : "not_started");
         p.actions.push({
           id: a.id,
           title: a.title,
           due: dayLabel(a.due_date).label,
+          dueDate: a.due_date || "",
           done: !!a.completed,
+          status: rawStatus === "completed" ? "completed" : "in_progress",
+          backlog: !!a.backlog,
           assignee: a.assignee || "",
         });
       }
@@ -402,6 +422,148 @@
         projects: projectRows.map((p) => ({ id: p.id, name: p.name })),
       });
 
+      // ---- Stage 7: catch-up digest (checkpoint-anchored) ----
+      // Decisions/differing-opinion events rank first, then deadlines/meetings,
+      // then everything else, per project -- no new extraction, a filtered read
+      // over events Stage 6 already produced.
+      const rankScore = (e) =>
+        e.event_type === "decision" ? 0
+          : (e.event_type === "deadline" || e.event_type === "meeting") ? 1
+          : 2;
+      function buildDigest(fromMs, toMs) {
+        const missed = events.filter(
+          (e) => e.project_id && e.event_date &&
+            new Date(e.event_date).getTime() >= fromMs &&
+            new Date(e.event_date).getTime() <= toMs,
+        );
+        const byProject = {};
+        for (const e of missed) (byProject[e.project_id] ||= []).push(e);
+        return Object.keys(byProject)
+          .map((pid) => {
+            // Every missed item is kept -- no truncation. The 5-at-a-time cap
+            // from "What users can do" applies to project groups, not items;
+            // the panel scrolls (dashboard.js) rather than dropping data.
+            const raw = byProject[pid]
+              .slice()
+              .sort((a, b) => rankScore(a) - rankScore(b) || new Date(b.event_date) - new Date(a.event_date));
+            const proj = projectRows.find((p) => p.id === pid);
+            const mostRecentMs = Math.max(...raw.map((e) => new Date(e.event_date).getTime()));
+            return {
+              id: pid,
+              project: nameById[pid] || "Project",
+              color: (proj && proj.color) || "#4263eb",
+              mostRecentMs,
+              // The actual time of the most recent decision/meeting/message in
+              // this project -- shown on the timeline rail, and what drives the
+              // most-recent-to-least-recent card order below.
+              when: fmtDateTime(mostRecentMs),
+              // Stage 7: precomputed by backend/digest (Haiku 4.5), never
+              // generated live here. Null until the backend job has run for
+              // this project -- dashboard.js falls back to a plain headline.
+              summary: proj?.catchup_summary || null,
+              // Tag signal (Tasks): a NEW open action item since the
+              // checkpoint -- scoped to the digest window, not "any open
+              // action ever" (which fires on almost every project and isn't
+              // actually "what changed"). Shared taxonomy with the board:
+              // Tasks / Meetings / Decisions / Issue-Blockers / Update-Change.
+              hasTask: actionRows.some(
+                (a) => a.project_id === pid && !a.completed && a.created_at &&
+                  new Date(a.created_at).getTime() >= fromMs &&
+                  new Date(a.created_at).getTime() <= toMs,
+              ),
+              items: raw.map((e) => ({
+                id: e.id,
+                title: e.title,
+                body: e.body || "",
+                person: e.person || "",
+                type: cap(e.event_type),
+                when: fmtDateTime(e.event_date),
+                requires_response: e.requires_response,
+                source_item_id: e.source_item_id,
+              })),
+            };
+          })
+          // Project groups most-recent-activity-first, per "list from most
+          // recent to less recent" in "What users can do".
+          .sort((a, b) => b.mostRecentMs - a.mostRecentMs);
+      }
+
+      // Checkpoint: stored profiles.last_catchup_at, or a 7-day window on first
+      // use (Supabase does not expose a reliable "previous" sign-in timestamp
+      // client-side, so a bounded default window stands in for it).
+      const storedCheckpoint = profileRes.data?.last_catchup_at || null;
+      const checkpoint = storedCheckpoint || new Date(nowMs - 7 * 86400000).toISOString();
+      window.setCatchupData?.({
+        checkpointLabel: fmtDateTime(checkpoint),
+        checkpointISO: checkpoint,
+        // Upper bound = now for the default digest -- there's nothing beyond
+        // "now" to show anyway, so this mostly matters for the OOO override
+        // below, but every call sets both ends for consistency.
+        checkpointToISO: new Date(nowMs).toISOString(),
+        groups: buildDigest(new Date(checkpoint).getTime(), nowMs),
+      });
+
+      // OOO override: re-filter already-loaded data client-side; does not move
+      // the stored checkpoint (only "Catch Me Up" / markCaughtUp does that).
+      window.showOooRange = (fromIso, toIso) => {
+        if (!fromIso || !toIso) return;
+        const fromMs = new Date(`${fromIso}T00:00:00`).getTime();
+        const toMs = new Date(`${toIso}T23:59:59`).getTime();
+        window.setCatchupData?.({
+          checkpointLabel: `${fromIso} to ${toIso}`,
+          // A real range (not the stored checkpoint) -- the project page's
+          // "since your last catch-up" split uses whichever window is
+          // currently active, override or not, with BOTH ends respected
+          // (a bare lower bound would leak in everything after "to" too).
+          checkpointISO: new Date(fromMs).toISOString(),
+          checkpointToISO: new Date(toMs).toISOString(),
+          groups: buildDigest(fromMs, toMs),
+        });
+      };
+
+      // Stage 8 mark_caught_up: advances the checkpoint to now, clearing the
+      // digest (nothing "missed" as of the moment it's viewed).
+      window.markCaughtUp = async () => {
+        const nowIso = new Date().toISOString();
+        const { error } = await db.from("profiles").upsert({
+          id: user.id, last_catchup_at: nowIso, updated_at: nowIso,
+        });
+        if (error) {
+          console.error("Failed to advance catch-up checkpoint.", error);
+          window.toast?.("Could not update checkpoint", error.message);
+          return;
+        }
+        window.setCatchupData?.({
+          checkpointLabel: fmtDateTime(nowIso), checkpointISO: nowIso,
+          checkpointToISO: nowIso, groups: [],
+        });
+        window.toast?.("You're all caught up", "We'll show what's new since now next time.");
+      };
+
+      // ---- Stage 7: AI-inferred action board (In Progress / Completed /
+      // Backlog) -- a pure read grouping over Stage 6 output. No dedicated
+      // "not started" column: Stage 6's default status folds into In
+      // Progress here since the board no longer distinguishes the two.
+      const board = { in_progress: [], completed: [], backlog: [] };
+      for (const a of actionRows) {
+        const rawStatus = a.status || (a.completed ? "completed" : "not_started");
+        const status = rawStatus === "completed" ? "completed" : "in_progress";
+        const card = {
+          id: a.id,
+          title: a.title,
+          project: nameById[a.project_id] || "Project",
+          projectId: a.project_id,
+          due: dayLabel(a.due_date).label,
+          dueDate: a.due_date || "",
+          overdue: !!(a.due_date && !a.completed && new Date(`${a.due_date}T23:59:59`) < new Date()),
+          color: a.color || "#4263eb",
+          status,
+          backlog: !!a.backlog,
+        };
+        (card.backlog ? board.backlog : board[status]).push(card);
+      }
+      window.setBoardData?.(board);
+
       // Summary metrics for the tiles.
       const linkedProjectIds = new Set(
         (linkRes.data || []).map((l) => l.project_id).filter(Boolean),
@@ -409,7 +571,9 @@
       const activeProjects = linkedProjectIds.size || projectRows.length;
       const needAttention = Object.keys(openByProject).length;
       const openActions = actionRows.filter((a) => !a.completed).length;
-      const waiting = Math.max(0, activeProjects - needAttention);
+      // Real signal now that Stage 6 tags requires_response, replacing the old
+      // activeProjects-minus-needAttention placeholder.
+      const waiting = events.filter((e) => e.requires_response === true).length;
       const weekAgo = nowMs - 7 * 86400000;
       const thisWeek = all.filter(
         (it) => it.occurred_at && new Date(it.occurred_at).getTime() >= weekAgo,
@@ -425,6 +589,212 @@
       console.error("Failed to load project data.", err);
     }
   }
+
+  // Stage 8: board drag-and-drop is a correction (edit_action), not the
+  // primary interaction -- it overrides the AI-inferred status/backlog and
+  // logs to user_corrections for evaluation, same as any other edit.
+  window.updateActionStatus = async (actionId, status, backlog, projectId) => {
+    const { data: { user } } = await db.auth.getUser();
+    if (!user) return false;
+    const { data: prevRows } = await db
+      .from("project_actions")
+      .select("status, backlog, completed")
+      .eq("id", actionId)
+      .limit(1);
+    const prev = prevRows && prevRows[0];
+    const completed = status === "completed";
+    const { error } = await db
+      .from("project_actions")
+      .update({ status, backlog: !!backlog, completed, user_edited: true, updated_at: new Date().toISOString() })
+      .eq("id", actionId);
+    if (error) {
+      console.error("Failed to update action status.", error);
+      return false;
+    }
+    await db.from("user_corrections").insert({
+      user_id: user.id,
+      project_id: projectId || null,
+      correction_type: "edit_action",
+      previous_value: prev ? { status: prev.status, backlog: prev.backlog, completed: prev.completed } : null,
+      corrected_value: { status, backlog: !!backlog, completed },
+    });
+    return true;
+  };
+
+  // Stage 8: verify-in-place "✓ looks right" -- confirm_match against the
+  // source item, presented inline in the digest instead of a review screen.
+  window.confirmDigestItem = async (sourceItemId, projectId) => {
+    const { data: { user } } = await db.auth.getUser();
+    if (!user) return false;
+    const { error } = await db.from("user_corrections").insert({
+      user_id: user.id,
+      source_item_id: sourceItemId || null,
+      project_id: projectId || null,
+      correction_type: "confirm_match",
+    });
+    if (error) {
+      console.error("Failed to record confirmation.", error);
+      return false;
+    }
+    return true;
+  };
+
+  // Stage 8: verify-in-place "✎ fix" -- edit_event, sets user_edited so
+  // re-extraction will not silently overwrite the correction. Covers both
+  // the title and the AI-generated summary (body) shown under it -- either
+  // can be omitted (undefined) to leave that column untouched.
+  window.editDigestEvent = async (eventId, { title, body } = {}) => {
+    const { data: { user } } = await db.auth.getUser();
+    if (!user) return false;
+    const { data: prevRows } = await db
+      .from("project_events")
+      .select("title, body")
+      .eq("id", eventId)
+      .limit(1);
+    const prev = prevRows && prevRows[0];
+    const updates = { user_edited: true, updated_at: new Date().toISOString() };
+    if (title != null) updates.title = title;
+    if (body != null) updates.body = body;
+    const { error } = await db
+      .from("project_events")
+      .update(updates)
+      .eq("id", eventId);
+    if (error) {
+      console.error("Failed to edit event.", error);
+      return false;
+    }
+    await db.from("user_corrections").insert({
+      user_id: user.id,
+      correction_type: "edit_event",
+      previous_value: prev ? { title: prev.title, body: prev.body } : null,
+      corrected_value: { title, body },
+    });
+    return true;
+  };
+
+  // Stage 8: verify-in-place for action items -- "✓ looks right" / "✎ fix
+  // the title", alongside the existing checkbox (which only ever meant
+  // "done or not", never "is this task actually described correctly").
+  window.confirmAction = async (actionId, projectId) => {
+    const { data: { user } } = await db.auth.getUser();
+    if (!user) return false;
+    const { error } = await db.from("user_corrections").insert({
+      user_id: user.id,
+      project_id: projectId || null,
+      correction_type: "confirm_match",
+      corrected_value: { action_id: actionId },
+    });
+    if (error) {
+      console.error("Failed to record confirmation.", error);
+      return false;
+    }
+    return true;
+  };
+
+  // Edits the title and/or the recommended due date the AI assigned to an
+  // action item -- either can be omitted (undefined) to leave that column
+  // untouched. An empty string for due_date clears it (no date recommended).
+  window.editActionTitle = async (actionId, { title, due_date } = {}) => {
+    const { data: { user } } = await db.auth.getUser();
+    if (!user) return false;
+    const { data: prevRows } = await db
+      .from("project_actions")
+      .select("title, due_date")
+      .eq("id", actionId)
+      .limit(1);
+    const prev = prevRows && prevRows[0];
+    const updates = { user_edited: true, updated_at: new Date().toISOString() };
+    if (title != null) updates.title = title;
+    if (due_date != null) updates.due_date = due_date || null;
+    const { error } = await db
+      .from("project_actions")
+      .update(updates)
+      .eq("id", actionId);
+    if (error) {
+      console.error("Failed to edit action.", error);
+      return false;
+    }
+    await db.from("user_corrections").insert({
+      user_id: user.id,
+      correction_type: "edit_action",
+      previous_value: prev ? { title: prev.title, due_date: prev.due_date } : null,
+      corrected_value: { title, due_date },
+    });
+    return true;
+  };
+
+  // Stage 8: verify-in-place for the project's own summary (Stage 5,
+  // Sonnet-generated) -- nothing covered this before; only individual
+  // events/actions were correctable, not the project description itself.
+  // Stage 8: reject_match on an action item -- answers "is this actually
+  // needed", not "is it done yet" (that's the checkbox / updateActionStatus).
+  // No `dismissed` column exists on project_actions, so a reject removes the
+  // row outright; the full prior row is captured on the correction first so
+  // nothing the model produced is silently lost from the evaluation record.
+  window.rejectAction = async (actionId, projectId) => {
+    const { data: { user } } = await db.auth.getUser();
+    if (!user) return false;
+    const { data: prevRows } = await db
+      .from("project_actions")
+      .select("title, assignee, due_date, status, backlog, completed")
+      .eq("id", actionId)
+      .limit(1);
+    const prev = prevRows && prevRows[0];
+    const { error } = await db.from("project_actions").delete().eq("id", actionId);
+    if (error) {
+      console.error("Failed to reject action.", error);
+      return false;
+    }
+    await db.from("user_corrections").insert({
+      user_id: user.id,
+      project_id: projectId || null,
+      correction_type: "reject_match",
+      previous_value: prev || null,
+    });
+    return true;
+  };
+
+  window.confirmProjectSummary = async (projectId) => {
+    const { data: { user } } = await db.auth.getUser();
+    if (!user) return false;
+    const { error } = await db.from("user_corrections").insert({
+      user_id: user.id,
+      project_id: projectId,
+      correction_type: "confirm_match",
+    });
+    if (error) {
+      console.error("Failed to record confirmation.", error);
+      return false;
+    }
+    return true;
+  };
+
+  window.editProjectSummary = async (projectId, newSummary) => {
+    const { data: { user } } = await db.auth.getUser();
+    if (!user) return false;
+    const { data: prevRows } = await db
+      .from("projects")
+      .select("summary")
+      .eq("id", projectId)
+      .limit(1);
+    const prev = prevRows && prevRows[0];
+    const { error } = await db
+      .from("projects")
+      .update({ summary: newSummary, updated_at: new Date().toISOString() })
+      .eq("id", projectId);
+    if (error) {
+      console.error("Failed to edit project summary.", error);
+      return false;
+    }
+    await db.from("user_corrections").insert({
+      user_id: user.id,
+      project_id: projectId,
+      correction_type: "edit_project",
+      previous_value: prev ? { summary: prev.summary } : null,
+      corrected_value: { summary: newSummary },
+    });
+    return true;
+  };
 
   window.startSourceConnection = async (provider) => {
     const { data: { session } } = await db.auth.getSession();

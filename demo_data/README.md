@@ -74,7 +74,6 @@ Replace `<UID>` with the id printed by the loader.
 
 ```bash
 # Stage 2 — normalize
-4faafb71-24d3-45df-8cc8-bb774509df04
 python3 backend/normalize/normalize.py run --user-id <UID>
 
 # Stage 3 — clean & dedupe + work-only filter (LLM work-gate runs by default;
@@ -90,6 +89,11 @@ python3 backend/grouping/group.py run --user-id <UID> --reset
 
 # Stage 6 — extract events & actions (uses Claude Haiku 4.5)
 python3 backend/extract/extract.py run --user-id <UID> --reset
+
+# Stage 7 — precompute the catch-up digest's per-project summary (Haiku 4.5).
+# Run this after Stage 6 (and again any time new events land) -- the
+# dashboard only reads projects.catchup_summary, it never generates it live.
+python3 backend/digest/summarize.py run --user-id <UID>
 ```
 
 Each stage has `status` (and most have `preview`) subcommands for spot-checking,

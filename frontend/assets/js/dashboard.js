@@ -264,6 +264,38 @@ const connectors = [
 ];
 const $ = (s, r = document) => r.querySelector(s),
   $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+// Top-level views: Overview (catch-up, read-only), Actions (board + upcoming),
+// Projects (the one place you verify/fix/check things off).
+const VIEW_IDS = ["overview", "actions", "projects"];
+function showView(target) {
+  $$(".nav[data-target]").forEach((n) => n.classList.toggle("active", n.dataset.target === target));
+  VIEW_IDS.forEach((id) => {
+    const el = $("#" + id);
+    if (el) el.hidden = id !== target;
+  });
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+// Within Projects: grid of everything, or one project's full-page detail --
+// never a partial-width overlay with the grid still visible behind it.
+function showProjectsGrid() {
+  const grid = $("#projectsGridView");
+  const detail = $("#projectDetailView");
+  if (grid) grid.hidden = false;
+  if (detail) detail.hidden = true;
+}
+function showProjectDetailView() {
+  const grid = $("#projectsGridView");
+  const detail = $("#projectDetailView");
+  if (grid) grid.hidden = true;
+  if (detail) detail.hidden = false;
+}
+// Overview cards navigate here instead of opening an editable drawer inline.
+function goToProject(projectId) {
+  showView("projects");
+  openProjectPage(projectId);
+}
+
 function renderProjects(filter = "all") {
   return; // Stage 7: the project grid is replaced by the chronological timeline.
   // eslint-disable-next-line no-unreachable
@@ -284,33 +316,6 @@ function renderProjects(filter = "all") {
     c.onclick = (e) => !e.target.closest(".more") && openProject(c.dataset.id);
     c.onkeydown = (e) => e.key === "Enter" && openProject(c.dataset.id);
   });
-}
-function renderActions() {
-  $("#actionList").innerHTML = actions
-    .map(
-      (a) =>
-        `<div class="action ${a.done ? "done" : ""}" data-id="${a.id}"><input type="checkbox" ${a.done ? "checked" : ""} aria-label="Complete ${a.title}"><div><strong>${a.title}</strong><small><i class="dot" style="--dot:${a.color}"></i>${a.project}</small></div><span class="due ${a.overdue ? "overdue" : ""}">${a.due}</span></div>`,
-    )
-    .join("");
-  $$(".action input").forEach(
-    (x) =>
-      (x.onchange = () => {
-        const a = actions.find((a) => a.id == x.closest(".action").dataset.id);
-        a.done = x.checked;
-        renderActions();
-        $("#actionCount").textContent =
-          actions.filter((a) => !a.done).length + 4;
-        toast(x.checked ? "Action completed" : "Action reopened", a.title);
-      }),
-  );
-}
-function renderActivity() {
-  $("#activityList").innerHTML = activity
-    .map(
-      (a) =>
-        `<div class="activity"><i style="--color:${a.color};--soft:${a.soft}">${a.icon}</i><div><p>${a.text}</p><small>${a.meta}</small></div><time>${a.time}</time></div>`,
-    )
-    .join("");
 }
 let activeProject = null,
   activeTab = "timeline";
@@ -339,11 +344,11 @@ function renderDrawer() {
     const a = actions.filter((x) => x.projectId === activeProject.id);
     $("#drawerBody").innerHTML = a.length
       ? a
-          .map(
-            (x) =>
-              `<div class="action"><input type="checkbox" ${x.done ? "checked" : ""}><div><strong>${x.title}</strong><small>${x.project}</small></div><span class="due">${x.due}</span></div>`,
-          )
-          .join("")
+        .map(
+          (x) =>
+            `<div class="action"><input type="checkbox" ${x.done ? "checked" : ""}><div><strong>${x.title}</strong><small>${x.project}</small></div><span class="due">${x.due}</span></div>`,
+        )
+        .join("")
       : '<p class="empty">No open actions for this project.</p>';
   }
   if (activeTab === "files")
@@ -355,27 +360,27 @@ function renderDrawer() {
       .join("");
   $$(".delete").forEach(
     (b) =>
-      (b.onclick = () => {
-        activeProject.events = activeProject.events.filter(
-          (e) => e.id != b.closest(".event").dataset.event,
-        );
-        renderDrawer();
-        toast("Timeline item deleted", "The project memory was updated.");
-      }),
+    (b.onclick = () => {
+      activeProject.events = activeProject.events.filter(
+        (e) => e.id != b.closest(".event").dataset.event,
+      );
+      renderDrawer();
+      toast("Timeline item deleted", "The project memory was updated.");
+    }),
   );
   $$(".edit").forEach(
     (b) =>
-      (b.onclick = () => {
-        const e = activeProject.events.find(
-            (e) => e.id == b.closest(".event").dataset.event,
-          ),
-          v = prompt("Edit timeline title:", e.title);
-        if (v?.trim()) {
-          e.title = v.trim();
-          renderDrawer();
-          toast("Timeline item updated", e.title);
-        }
-      }),
+    (b.onclick = () => {
+      const e = activeProject.events.find(
+        (e) => e.id == b.closest(".event").dataset.event,
+      ),
+        v = prompt("Edit timeline title:", e.title);
+      if (v?.trim()) {
+        e.title = v.trim();
+        renderDrawer();
+        toast("Timeline item updated", e.title);
+      }
+    }),
   );
 }
 function renderConnectors() {
@@ -385,24 +390,9 @@ function renderConnectors() {
         `<div class="connector"><i class="source ${c.id}">${c.icon}</i><div><strong>${c.name}</strong><small>${c.description}</small></div><button type="button" data-connector="${c.id}" class="${c.connected ? "connected" : ""}" ${c.comingSoon ? "disabled" : ""}>${c.comingSoon ? "Coming soon" : c.connected ? "Connected" : "Connect"}</button></div>`,
     )
     .join("");
-  renderIntegrationOptions();
   $$('[data-connector]:not([disabled])').forEach((button) => {
     button.onclick = () => connectSource(button.dataset.connector);
   });
-}
-
-function renderIntegrationOptions() {
-  const target = $("#integrationOptions");
-  if (!target) return;
-  target.innerHTML = connectors
-    .filter((connector) => !connector.comingSoon)
-    .map((connector) => `
-      <article class="integration-option ${connector.connected ? "is-connected" : ""}">
-        <i class="source ${connector.id}">${connector.icon}</i>
-        <div><strong>${connector.name}</strong><small>${connector.connected ? "Sync is active" : "Connect to import automatically"}</small></div>
-        <button type="button" data-connector="${connector.id}">${connector.connected ? "Manage" : "Connect"}</button>
-      </article>`)
-    .join("");
 }
 
 async function connectSource(provider) {
@@ -429,20 +419,17 @@ window.setSourceConnections = (rows = []) => {
   });
   const connected = connectors.filter((connector) => connector.connected);
   document.body.classList.toggle("has-integrations", connected.length > 0);
-  const welcomeStatus = $("#welcomeStatus");
-  const connectionSummary = $("#connectionSummary");
-  const integrationDescription = $("#integrationDescription");
+
+  // Minimal, disappearing onboarding prompt -- shown only until the first
+  // source is connected, replacing the old permanent Integration Hub card.
+  const prompt = $("#connectPrompt");
+  if (prompt) prompt.hidden = connected.length > 0;
+
   if (connected.length) {
-    welcomeStatus.textContent = `${connected.length} source${connected.length === 1 ? " is" : "s are"} connected. ThreadLinePMA will organize imported updates below.`;
-    connectionSummary.innerHTML = `<span>✓</span><div><strong>${connected.length} app${connected.length === 1 ? "" : "s"} connected</strong><small>${connected.map((connector) => connector.name).join(" · ")}</small></div>`;
-    integrationDescription.textContent = "Your automatic imports are active. Connect another source or manage an existing connection at any time.";
     $("#syncTitle").textContent = "Automatic sync active";
     $("#syncStatus").textContent = "Ready to scan connected sources";
     $("#scanBtn").textContent = "Scan for updates";
   } else {
-    welcomeStatus.textContent = "Connect at least one work app to start building your dashboard automatically.";
-    connectionSummary.innerHTML = '<span>1</span><div><strong>First, connect your work apps</strong><small>Gmail or Google Calendar takes only a minute</small></div>';
-    integrationDescription.textContent = "Connect Gmail or Google Calendar first. ThreadLinePMA imports relevant information, groups it into projects, builds timelines, and extracts action items for you.";
     $("#syncTitle").textContent = "Waiting for a connection";
     $("#syncStatus").textContent = "No automatic imports yet";
     $("#scanBtn").textContent = "Connect apps";
@@ -466,64 +453,23 @@ window.showToast = toast;
 
 // Stage 7: auth.js loads the real projects/events/actions from Supabase and
 // hands them here to replace whatever is currently rendered.
-function renderAttention(list = []) {
-  const host = $("#attentionList");
-  if (!host) return;
-  host.innerHTML = list.length
-    ? list
-        .map(
-          (a) =>
-            `<div class="att-card clickable" data-project="${a.id || ""}" style="--color:${a.color || "#4263eb"}"><strong>${escHtml(a.project)}</strong><p class="att-status">${escHtml(a.status)}</p>${a.suggested ? `<p class="att-suggest">Suggested: ${escHtml(a.suggested)}</p>` : ""}</div>`,
-        )
-        .join("")
-    : '<p class="empty">Nothing needs your attention right now.</p>';
-  $$("#attentionList .att-card").forEach((c) => {
-    if (c.dataset.project) c.onclick = () => openProjectDrawer(c.dataset.project);
-  });
-}
-
-function renderActivityFeed(days = []) {
-  const host = $("#activityTimeline");
-  if (!host) return;
-  host.innerHTML = days.length
-    ? days
-        .map(
-          (d) =>
-            `<div class="day-group"><h4>${escHtml(d.label)}</h4>${d.items
-              .map((it) => {
-                const isCal = it.source_type === "google_calendar";
-                const icon = isCal ? "📅" : "✉";
-                const label = isCal ? "Calendar" : "Gmail";
-                return `<div class="act-row clickable" data-item="${it.id || ""}"><span class="act-dot"></span><div class="act-body"><strong>${escHtml(it.project)} — ${escHtml(it.title)}</strong><small><span class="src">${icon}</span>${label}</small></div></div>`;
-              })
-              .join("")}</div>`,
-        )
-        .join("")
-    : '<p class="empty">No recent activity.</p>';
-  $$("#activityTimeline .act-row").forEach((r) => {
-    if (r.dataset.item) r.onclick = () => openItem(r.dataset.item);
-  });
-}
-
 function renderUpcoming(list = []) {
   const host = $("#upcomingList");
   if (!host) return;
   host.innerHTML = list.length
     ? list
-        .map(
-          (u) =>
-            `<div class="up-row clickable" data-item="${u.id || ""}"><span class="up-when">${escHtml(u.when)}</span><span class="up-title">${escHtml(u.title)}</span></div>`,
-        )
-        .join("")
+      .map(
+        (u) =>
+          `<div class="up-row clickable" data-item="${u.id || ""}"><span class="up-when">${escHtml(u.when)}</span><span class="up-title">${escHtml(u.title)}</span></div>`,
+      )
+      .join("")
     : '<p class="empty">Nothing upcoming.</p>';
   $$("#upcomingList .up-row").forEach((r) => {
     if (r.dataset.item) r.onclick = () => openItem(r.dataset.item);
   });
 }
 
-window.setDashboardData = ({ attention = [], activityDays = [], upcoming = [], projects: projList = [] } = {}) => {
-  renderAttention(attention);
-  renderActivityFeed(activityDays);
+window.setDashboardData = ({ upcoming = [], projects: projList = [] } = {}) => {
   renderUpcoming(upcoming);
   const opts = projList
     .map((p) => `<option value="${p.id}">${escHtml(p.name)}</option>`)
@@ -532,8 +478,326 @@ window.setDashboardData = ({ attention = [], activityDays = [], upcoming = [], p
   if (updateSelect) updateSelect.innerHTML = opts;
 };
 
-// ---- Stage 7: chronological timeline of source items + thread drawer ----
-let timelineFeed = [];
+// ---- Stage 7: catch-up hero + digest ----
+let catchupGroups = [];
+
+function tagPill(label, kind) {
+  return `<span class="digest-tag tag-${kind}">${escHtml(label)}</span>`;
+}
+
+function renderCatchupDigest() {
+  const host = $("#catchupList");
+  if (!host) return;
+  host.style.maxHeight = "";
+  host.style.overflowY = "";
+  if (!catchupGroups.length) {
+    host.innerHTML = '<p class="empty">Nothing new since then — you’re fully caught up.</p>';
+    return;
+  }
+  // One summary card per project (not per item): a brief "what happened"
+  // headline + count, not the full item list. Clicking opens the complete
+  // message/thread history via the existing project drawer.
+  host.innerHTML = catchupGroups
+    .map((g) => {
+      const top = g.items[0];
+      const more = g.items.length - 1;
+      const people = [...new Set(g.items.map((it) => it.person).filter(Boolean))];
+      const peopleLabel = people.slice(0, 3).join(", ") + (people.length > 3 ? ` +${people.length - 3} more` : "");
+      const needsReply = g.items.some((it) => it.requires_response);
+      // Prefer the precomputed Haiku sentence (backend/digest); fall back to
+      // a plain headline only if it hasn't been generated for this project yet.
+      const summary = g.summary
+        ? escHtml(g.summary)
+        : more > 0
+          ? `${escHtml(top.title)} — and ${more} more update${more > 1 ? "s" : ""}`
+          : escHtml(top.title);
+
+      // Tag row: urgency (always) + up to 2 content tags from the shared
+      // Task/Meeting/Decision/Issue-Blocker/Update-Change taxonomy -- the
+      // same one the board will use -- picked by priority so the cap of 3
+      // stays even when a project's missed items span several kinds.
+      const types = new Set(g.items.map((it) => it.type));
+      const contentCandidates = [
+        { test: types.has("Issue"), label: "Issue/Blockers", kind: "issue" },
+        { test: types.has("Decision"), label: "Decisions", kind: "decision" },
+        { test: g.hasTask, label: "Tasks", kind: "task" },
+        { test: types.has("Meeting"), label: "Meetings", kind: "meeting" },
+        {
+          test: ["Email", "File", "Deadline", "Status", "Note"].some((t) => types.has(t)),
+          label: "Update / Change", kind: "update",
+        },
+      ];
+      const tags = [
+        // Urgency -- always exactly one: do I need to respond?
+        needsReply ? tagPill("Needs Your Reply", "reply") : tagPill("For Your Info", "fyi"),
+      ];
+      for (const c of contentCandidates) {
+        if (tags.length >= 3) break;
+        if (c.test) tags.push(tagPill(c.label, c.kind));
+      }
+
+      return `<div class="digest-item clickable" data-project="${g.id}" style="--color:${g.color}">
+        <div class="digest-time">${escHtml(g.when || "")}</div>
+        <div class="digest-rail"><span class="digest-line"></span><span class="digest-dot"></span></div>
+        <div class="digest-card">
+          <div class="digest-body">
+            <div class="digest-top">
+              <strong>${escHtml(g.project)}</strong>
+              <span class="digest-count">${g.items.length} update${g.items.length > 1 ? "s" : ""}</span>
+            </div>
+            <p class="digest-sentence">${summary}</p>
+            <div class="digest-tags">${tags.join("")}</div>
+            ${peopleLabel ? `<div class="digest-meta"><span class="digest-people">${escHtml(peopleLabel)}</span></div>` : ""}
+          </div>
+        </div>
+      </div>`;
+    })
+    .join("");
+
+  // Overview is glance-and-navigate only -- no editing here. Clicking a card
+  // takes you to that project's page (Projects view), which is the one place
+  // you verify/fix/check things off.
+  $$("#catchupList .digest-item").forEach((row) => {
+    row.onclick = () => goToProject(row.dataset.project);
+  });
+
+  // "What users can do": show ~5 project cards at a time; scroll for the
+  // rest rather than dropping data. Each project is one uniform-height row now.
+  const rows = $$("#catchupList .digest-item");
+  if (rows.length > 5) {
+    host.style.maxHeight = `${rows[5].offsetTop}px`;
+    host.style.overflowY = "auto";
+  }
+}
+
+// Shared with the project page, so "Since your last catch-up" there uses the
+// exact same window as the digest that brought the user here -- both ends,
+// not just the lower bound (a bare ">= cutoff" would leak in everything
+// after an OOO range's "to" date too).
+let catchupCheckpointMs = null;
+let catchupCheckpointToMs = null;
+
+window.setCatchupData = ({ checkpointLabel = "", checkpointISO = null, checkpointToISO = null, groups = [] } = {}) => {
+  const since = $("#catchupSince");
+  if (since) since.textContent = checkpointLabel || "your last visit";
+  catchupCheckpointMs = checkpointISO ? new Date(checkpointISO).getTime() : null;
+  catchupCheckpointToMs = checkpointToISO ? new Date(checkpointToISO).getTime() : null;
+  catchupGroups = groups;
+  renderCatchupDigest();
+};
+
+// ---- Stage 7: AI-inferred action board (drag = Stage 8 correction) ----
+// Three real states -- In Progress / Completed / Backlog. No separate "Not
+// Started" column; Stage 6's default status folds into In Progress since
+// the board doesn't distinguish "not started yet" from "in progress".
+let boardState = { in_progress: [], completed: [], backlog: [] };
+const BOARD_COLS = ["in_progress", "completed", "backlog"];
+
+// Board filters: which project(s) to show (empty set = all projects) and an
+// optional due-date range. Module-level so they survive a re-render and a
+// drag/drop, and so a project page can drive them via showProjectOnBoard().
+// A checkbox dropdown rather than one chip per project -- scales as more
+// projects get added instead of the filter bar growing with them -- and
+// rather than a native <select multiple>, which needs a modifier key to
+// pick more than one option and has no real "closed" state.
+let boardProjectFilter = new Set();
+let boardDueFrom = null;
+let boardDueTo = null;
+
+function _cardMatchesBoardFilters(c) {
+  if (boardProjectFilter.size && !boardProjectFilter.has(String(c.projectId))) return false;
+  if (boardDueFrom || boardDueTo) {
+    if (!c.dueDate) return false;
+    if (boardDueFrom && c.dueDate < boardDueFrom) return false;
+    if (boardDueTo && c.dueDate > boardDueTo) return false;
+  }
+  return true;
+}
+
+function _boardProjectFilterLabel(list) {
+  if (!boardProjectFilter.size) return "All projects";
+  if (boardProjectFilter.size === 1) {
+    const p = list.find((x) => boardProjectFilter.has(x.id));
+    return p ? p.name : "1 project";
+  }
+  return `${boardProjectFilter.size} projects`;
+}
+
+// The checkbox list is built from whatever projects actually have cards on
+// the board right now, so the menu never offers one with nothing to show.
+// If a selected project drops off the board (e.g. its last action item was
+// completed/removed elsewhere), it's dropped from the filter too.
+function renderBoardProjectOptions() {
+  const btn = $("#boardProjectFilterBtn");
+  const menu = $("#boardProjectFilterMenu");
+  if (!btn || !menu) return;
+  const byProject = {};
+  for (const col of BOARD_COLS) {
+    for (const c of boardState[col] || []) {
+      if (c.projectId) byProject[c.projectId] = { id: String(c.projectId), name: c.project };
+    }
+  }
+  const list = Object.values(byProject).sort((a, b) => a.name.localeCompare(b.name));
+  for (const id of [...boardProjectFilter]) {
+    if (!list.some((p) => p.id === id)) boardProjectFilter.delete(id);
+  }
+  btn.textContent = `${_boardProjectFilterLabel(list)} ▾`;
+  menu.innerHTML = list.length
+    ? list
+      .map(
+        (p) =>
+          `<label><input type="checkbox" value="${p.id}"${boardProjectFilter.has(p.id) ? " checked" : ""}> ${escHtml(p.name)}</label>`,
+      )
+      .join("")
+    : '<p class="board-filter-dd-empty">No projects yet.</p>';
+  $$("#boardProjectFilterMenu input[type=checkbox]").forEach((cb) => {
+    cb.onchange = () => {
+      if (cb.checked) boardProjectFilter.add(cb.value);
+      else boardProjectFilter.delete(cb.value);
+      renderBoard();
+    };
+  });
+}
+
+// Jumps from a project page to the Task Board, scoped to just that
+// project's action items -- "See action items by due dates" in
+// _projectBlocks. Due-date range is left open so every due date shows.
+function showProjectOnBoard(projectId) {
+  boardProjectFilter = new Set([String(projectId)]);
+  boardDueFrom = null;
+  boardDueTo = null;
+  if ($("#boardDueFrom")) $("#boardDueFrom").value = "";
+  if ($("#boardDueTo")) $("#boardDueTo").value = "";
+  renderBoard();
+  showView("actions");
+}
+
+function renderBoard() {
+  renderBoardProjectOptions();
+  for (const col of BOARD_COLS) {
+    const host = document.querySelector(`.board-list[data-col="${col}"]`);
+    if (!host) continue;
+    const cards = (boardState[col] || []).filter(_cardMatchesBoardFilters);
+    host.innerHTML = cards.length
+      ? cards
+        .map((c) => {
+          // Same tag-chip idea as the project page and catch-up digest --
+          // which project this belongs to, and its due date if it has one
+          // (backlog items and some AI-suggested actions won't).
+          const chips = [`<span class="board-chip board-chip-project" style="--color:${c.color}">${escHtml(c.project)}</span>`];
+          if (c.due) chips.push(`<span class="board-chip board-chip-due${c.overdue ? " board-chip-overdue" : ""}">${escHtml(c.due)}</span>`);
+          return `<div class="board-card clickable" draggable="true" data-action="${c.id}" data-project="${c.projectId || ""}" style="--color:${c.color}"><strong>${escHtml(c.title)}</strong><div class="board-card-tags">${chips.join("")}</div></div>`;
+        })
+        .join("")
+      : (boardState[col] || []).length
+        ? '<p class="empty small">No items match the current filters.</p>'
+        : '<p class="empty small">No items.</p>';
+  }
+  $$(".board-card").forEach((card) => {
+    card.ondragstart = (e) => {
+      e.dataTransfer.setData("text/plain", card.dataset.action);
+      e.dataTransfer.effectAllowed = "move";
+    };
+    // A click (as opposed to a drag) takes you to the project it belongs to
+    // -- the board stays the place to triage status, the project page stays
+    // the one place to see full context and correct the item itself.
+    card.onclick = () => {
+      if (card.dataset.project) goToProject(card.dataset.project);
+    };
+  });
+  $$(".board-list").forEach((list) => {
+    list.ondragover = (e) => e.preventDefault();
+    list.ondragenter = () => list.classList.add("drag-over");
+    list.ondragleave = () => list.classList.remove("drag-over");
+    list.ondrop = async (e) => {
+      e.preventDefault();
+      list.classList.remove("drag-over");
+      const actionId = e.dataTransfer.getData("text/plain");
+      const col = list.dataset.col;
+      if (!actionId || !col) return;
+      let moved = null;
+      for (const c of BOARD_COLS) {
+        const idx = (boardState[c] || []).findIndex((x) => String(x.id) === actionId);
+        if (idx > -1) {
+          moved = boardState[c][idx];
+          boardState[c].splice(idx, 1);
+          break;
+        }
+      }
+      if (!moved) return;
+      // Only two underlying statuses now (Backlog is a flag, not a status):
+      // dropping into Backlog keeps the action "in progress" underneath,
+      // just flagged low-priority; In Progress/Completed set status directly.
+      const status = col === "backlog" ? "in_progress" : col;
+      const backlog = col === "backlog";
+      moved.status = status;
+      moved.backlog = backlog;
+      boardState[col].push(moved);
+      renderBoard();
+      const ok = await window.updateActionStatus?.(actionId, status, backlog, moved.projectId);
+      if (!ok) {
+        toast("Update failed", moved.title);
+        return;
+      }
+      // Keep the project page in sync in real time too -- the same
+      // correction, just made from the board instead of from the project
+      // page's own status control.
+      const project = moved.projectId ? projectIndex[moved.projectId] : null;
+      const action = project?.actions?.find((a) => String(a.id) === String(actionId));
+      if (action) {
+        action.status = status;
+        action.backlog = backlog;
+        action.done = status === "completed";
+      }
+      if (_drawerContext && String(_drawerContext.projectId) === String(moved.projectId)) {
+        _refreshDrawer();
+      }
+      toast("Board updated", moved.title);
+    };
+  });
+}
+
+window.setBoardData = (data = {}) => {
+  boardState = {
+    in_progress: data.in_progress || [],
+    completed: data.completed || [],
+    backlog: data.backlog || [],
+  };
+  renderBoard();
+};
+
+// Keeps the Task Board in sync in real time when an action item is changed
+// from somewhere else (the project page's checkbox, its edit dialog, or a
+// reject) instead of only picking up the change on the next full reload.
+// `patch` merges onto the card and re-files it into the right column if
+// `status`/`backlog` changed; `patch === null` removes the card entirely
+// (a reject).
+function _syncBoardCard(actionId, patch) {
+  let card = null, fromCol = null;
+  for (const col of BOARD_COLS) {
+    const idx = (boardState[col] || []).findIndex((x) => String(x.id) === String(actionId));
+    if (idx > -1) {
+      card = boardState[col][idx];
+      fromCol = col;
+      if (patch === null) boardState[col].splice(idx, 1);
+      break;
+    }
+  }
+  if (!card) return;
+  if (patch === null) {
+    renderBoard();
+    return;
+  }
+  Object.assign(card, patch);
+  const targetCol = card.backlog ? "backlog" : card.status || "in_progress";
+  if (targetCol !== fromCol) {
+    boardState[fromCol] = boardState[fromCol].filter((x) => String(x.id) !== String(actionId));
+    (boardState[targetCol] ||= []).push(card);
+  }
+  renderBoard();
+}
+
+// ---- Stage 7: source items + thread drawer (feeds the digest's click-through) ----
 let allItems = [];
 let projectIndex = {};
 
@@ -543,155 +807,504 @@ function escHtml(value = "") {
   return el.innerHTML;
 }
 
-let _dragMoved = false;
-
-function _startOfWeek(date) {
-  const x = new Date(date);
-  const day = (x.getDay() + 6) % 7; // Monday = 0
-  x.setDate(x.getDate() - day);
-  x.setHours(0, 0, 0, 0);
-  return x;
+// Mirrors auth.js's dayLabel() so an edited due date shows the right
+// "Overdue" / "Today" / "Tomorrow" / short-date label immediately, without
+// waiting on the next full reload from Supabase.
+function formatDueLabel(dateStr) {
+  if (!dateStr) return "No date";
+  const d = new Date(`${dateStr}T00:00:00`);
+  const days = Math.ceil((d - new Date()) / 86400000);
+  if (days < 0) return "Overdue";
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+// Mirrors auth.js's board-card `overdue` computation, for the same reason.
+function computeOverdue(dateStr, done) {
+  return !!(dateStr && !done && new Date(`${dateStr}T23:59:59`) < new Date());
+}
+// The Task Board's three real states, from an action's raw status/backlog --
+// shared by the project page's status select so both surfaces agree on what
+// "the status" means for a given action.
+function actionStatusCol(a) {
+  if (a.backlog) return "backlog";
+  return a.status === "completed" ? "completed" : "in_progress";
 }
 
-function _bucketFor(dateVal, unit) {
-  if (!dateVal) return { key: "undated", label: "Undated", sort: Infinity };
-  const d = new Date(dateVal);
-  if (unit === "month") {
-    const s = new Date(d.getFullYear(), d.getMonth(), 1);
-    return { key: `m${s.getTime()}`, label: s.toLocaleDateString(undefined, { month: "short", year: "numeric" }), sort: s.getTime() };
-  }
-  if (unit === "week") {
-    const s = _startOfWeek(d);
-    return { key: `w${s.getTime()}`, label: s.toLocaleDateString(undefined, { month: "short", day: "numeric" }), sort: s.getTime() };
-  }
-  const s = new Date(d);
-  s.setHours(0, 0, 0, 0);
-  return { key: `d${s.getTime()}`, label: s.toLocaleDateString(undefined, { month: "short", day: "numeric" }), sort: s.getTime() };
+// Event type -> tag color, sharing the same taxonomy as the digest/board.
+const EVENT_TAG_KIND = { Decision: "decision", Meeting: "meeting", Issue: "issue" };
+
+// Same local calendar day? Used to decide whether an event's AI-interpreted
+// date is worth flagging as different from its source message's real date --
+// small formatting/timezone differences shouldn't trigger a false alarm.
+function _sameLocalDay(msA, msB) {
+  if (msA == null || msB == null) return true;
+  const a = new Date(msA), b = new Date(msB);
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function _wireDragScroll(el) {
-  let down = false, startX = 0, startLeft = 0;
-  el.onpointerdown = (e) => {
-    down = true; _dragMoved = false; startX = e.clientX; startLeft = el.scrollLeft;
-    el.classList.add("dragging");
-  };
-  el.onpointermove = (e) => {
-    if (!down) return;
-    const dx = e.clientX - startX;
-    if (Math.abs(dx) > 5) _dragMoved = true;
-    el.scrollLeft = startLeft - dx;
-  };
-  const up = () => {
-    down = false;
-    el.classList.remove("dragging");
-    setTimeout(() => (_dragMoved = false), 0);
-  };
-  el.onpointerup = up;
-  el.onpointerleave = up;
-}
-
-// Draggable swimlane board: rows are projects (categories), columns are time
-// buckets, each card is a thread. Click a card -> full thread history.
-function renderTimeline(gran = "auto") {
-  const host = $("#projectGrid");
-  if (!host) return;
-  host.className = "tl-board";
-
-  // Group feed items into threads (by email thread, else the item itself).
-  const threads = {};
-  for (const it of timelineFeed) {
-    const key = it.external_thread_id || `i:${it.id}`;
-    const t = (threads[key] ||= { key, items: [], project: "Unsorted" });
-    t.items.push(it);
-    if (it.project) t.project = it.project;
-  }
-  const threadList = Object.values(threads).map((t) => {
-    t.items.sort((a, b) => new Date(b.occurred_at || 0) - new Date(a.occurred_at || 0));
-    const rep = t.items[0];
-    return {
-      repId: rep.id,
-      project: t.project,
-      title: rep.title || "(no subject)",
-      source_type: rep.source_type,
-      date: rep.occurred_at,
-      count: t.items.length,
-    };
-  });
-  if (!threadList.length) {
-    host.innerHTML = '<p class="empty">No items yet. Connect Gmail or Google Calendar, then sync.</p>';
-    return;
-  }
-
-  // Pick a time unit.
-  const times = threadList.map((t) => (t.date ? new Date(t.date).getTime() : null)).filter(Boolean);
-  const rangeDays = times.length ? (Math.max(...times) - Math.min(...times)) / 86400000 : 0;
-  let unit = gran;
-  if (!["day", "week", "month"].includes(gran)) {
-    unit = rangeDays <= 45 ? "day" : rangeDays <= 365 ? "week" : "month";
-  }
-
-  // Buckets present in the data, oldest -> newest.
-  const bucketMap = {};
-  for (const t of threadList) {
-    const b = _bucketFor(t.date, unit);
-    t.bucket = b.key;
-    bucketMap[b.key] ||= b;
-  }
-  const buckets = Object.values(bucketMap).sort((a, b) => a.sort - b.sort);
-
-  // Lanes = projects, busiest first, Unsorted last.
-  const laneMap = {};
-  for (const t of threadList) (laneMap[t.project] ||= []).push(t);
-  const lanes = Object.keys(laneMap).sort((a, b) => {
-    if (a === "Unsorted") return 1;
-    if (b === "Unsorted") return -1;
-    return laneMap[b].length - laneMap[a].length;
-  });
-
-  const card = (t) => {
-    const cls = t.source_type === "google_calendar" ? "calendar" : "gmail";
-    const icon = t.source_type === "google_calendar" ? "31" : "M";
-    return `<button class="tl-card" data-item="${t.repId}"><i class="source ${cls}">${icon}</i><span class="tl-card-title">${escHtml(t.title)}</span>${t.count > 1 ? `<span class="tl-count">${t.count}</span>` : ""}</button>`;
-  };
-
-  let html = `<div class="tl-grid" style="grid-template-columns:170px repeat(${buckets.length},180px)">`;
-  html += `<div class="tl-corner"></div>`;
-  for (const b of buckets) html += `<div class="tl-col-head">${escHtml(b.label)}</div>`;
-  for (const lane of lanes) {
-    html += `<div class="tl-lane-label" title="${escHtml(lane)}">${escHtml(lane)}</div>`;
-    const byBucket = {};
-    for (const t of laneMap[lane]) (byBucket[t.bucket] ||= []).push(t);
-    for (const b of buckets) {
-      html += `<div class="tl-cell">${(byBucket[b.key] || []).map(card).join("")}</div>`;
+// Consecutive items (already date-sorted) that landed on the same local day
+// get one shared header instead of each repeating its own time + type tag.
+function _clusterEventsByDay(events) {
+  const groups = [];
+  for (const e of events) {
+    const last = groups[groups.length - 1];
+    if (last && _sameLocalDay(last[0].dateMs, e.dateMs)) {
+      last.push(e);
+    } else {
+      groups.push([e]);
     }
   }
-  html += `</div>`;
-  host.innerHTML = html;
+  return groups;
+}
 
-  $$(".tl-card").forEach((c) => (c.onclick = () => {
-    if (_dragMoved) return;
-    openThread(c.dataset.item);
-  }));
-  _wireDragScroll(host);
-  host.scrollLeft = host.scrollWidth; // start at the most recent
+// One item's title/body/verify row -- no time or type tag here anymore;
+// those live once on the cluster's shared header.
+function _dpEventItemRow(e) {
+  const diverges = e.sourceWhenMs != null && !_sameLocalDay(e.dateMs, e.sourceWhenMs);
+  // Every item still carries its own verify controls -- this is the one
+  // place items get confirmed or corrected (Stage 8), even when grouped.
+  return `<div class="dp-event" data-event="${e.id}" data-src="${e.source_item_id || ""}" data-title="${escHtml(e.title)}">
+    <div class="dp-event-main${e.source_item_id ? " clickable" : ""}">
+      <strong>${escHtml(e.title)}</strong>
+      ${e.body ? `<p>${escHtml(e.body)}</p>` : ""}
+      ${diverges ? `<small class="dp-ai-note">Message itself is dated ${escHtml(e.sourceWhen)} — verify if this looks off</small>` : ""}
+    </div>
+    <div class="digest-verify">
+      <button type="button" class="verify-ok" title="Looks right">✓</button>
+      <button type="button" class="verify-fix" title="Fix">✎</button>
+    </div>
+  </div>`;
+}
+
+// A day's worth of events: one time + the union of their type tags up top,
+// each item still its own row underneath -- easier to scan than a wall of
+// near-duplicate cards that all happened "around the same time".
+function _dpEventCluster(items) {
+  const types = [...new Set(items.map((e) => e.type))];
+  const tags = types.map((t) => tagPill(t, EVENT_TAG_KIND[t] || "update")).join("");
+  const anyDiverges = items.some((e) => e.sourceWhenMs != null && !_sameLocalDay(e.dateMs, e.sourceWhenMs));
+  return `<div class="dp-event-group">
+    <div class="dp-event-group-head">
+      <time>${escHtml(items[0].date)}</time>
+      ${tags}
+      ${items.length > 1 ? `<span class="dp-cluster-count">${items.length} items</span>` : ""}
+      ${anyDiverges ? `<span class="dp-ai-flag" title="AI-interpreted date from the message text">✦ AI-dated</span>` : ""}
+    </div>
+    ${items.map(_dpEventItemRow).join("")}
+  </div>`;
+}
+
+function _dpEventList(events) {
+  return _clusterEventsByDay(events).map(_dpEventCluster).join("");
+}
+
+// Which statuses the currently-viewed project's action list shows -- default
+// mirrors the old "open actions only" behavior (Completed hidden unless the
+// user opts in). Reset per-project (see _ensureActionFilterFor) so switching
+// projects doesn't carry over a filter that no longer makes sense there.
+let actionStatusFilter = new Set(["in_progress", "backlog"]);
+let _actionFilterProjectId = null;
+function _ensureActionFilterFor(projectId) {
+  if (_actionFilterProjectId !== projectId) {
+    actionStatusFilter = new Set(["in_progress", "backlog"]);
+    _actionFilterProjectId = projectId;
+  }
+}
+
+// One action item row -- the status select is the same three states as the
+// Task Board's columns, so changing it here is the identical correction
+// (edit_action) as dragging a card there. The verify controls answer a
+// different question: not "what state is this in" but "is this actually a
+// real, correctly-described action" -- confirm it, fix its title/due date,
+// or say it isn't needed at all (reject_match, removes it).
+function _dpActionRow(a, project) {
+  const col = actionStatusCol(a);
+  return `<div class="dp-action" data-action="${a.id}" data-project="${project.id}" data-title="${escHtml(a.title)}" data-due="${escHtml(a.dueDate || "")}">
+    <div class="dp-action-top">
+      <strong>${escHtml(a.title)}</strong>
+      <div class="digest-verify dp-action-verify">
+        <button type="button" class="action-verify-ok" title="Looks right — this is needed">✓</button>
+        <button type="button" class="action-verify-fix" title="Edit">✎</button>
+        <button type="button" class="action-verify-reject" title="Not needed — remove">✕</button>
+      </div>
+    </div>
+    <div class="dp-action-meta">
+      <select class="dp-action-status" data-action="${a.id}" data-project="${project.id}">
+        <option value="in_progress"${col === "in_progress" ? " selected" : ""}>In Progress</option>
+        <option value="completed"${col === "completed" ? " selected" : ""}>Completed</option>
+        <option value="backlog"${col === "backlog" ? " selected" : ""}>Backlog</option>
+      </select>
+      ${a.due ? `<em>${escHtml(a.due)}</em>` : ""}
+    </div>
+  </div>`;
 }
 
 function _projectBlocks(project) {
   if (!project) return "";
-  let html = `<div class="dp-head"><span class="dp-symbol" style="--color:${project.color || "#4263eb"}">${escHtml(project.symbol || "P")}</span><div><strong>${escHtml(project.name)}</strong>${project.summary ? `<p>${escHtml(project.summary)}</p>` : ""}</div></div>`;
-  const openActs = (project.actions || []).filter((a) => !a.done);
-  if (openActs.length) {
-    html += `<div class="dp-block"><h4>Open actions</h4>${openActs
-      .map((a) => `<div class="dp-action"><span>${escHtml(a.title)}</span><em>${escHtml(a.due || "")}</em></div>`)
-      .join("")}</div>`;
+  // Project summary (Stage 5, LLM-generated) gets the same verify-in-place
+  // treatment as timeline events: "✓ looks right" / "✎ fix" inline, instead
+  // of being the one AI-generated piece of text nobody can correct.
+  const summaryBlock = project.summary
+    ? `<div class="dp-summary" data-project="${project.id}">
+        <p>${escHtml(project.summary)}</p>
+        <div class="digest-verify dp-summary-verify">
+          <button type="button" class="summary-verify-ok" title="Summary looks right">✓</button>
+          <button type="button" class="summary-verify-fix" title="Edit summary">✎</button>
+        </div>
+      </div>`
+    : "";
+  let html = `<div class="dp-head"><span class="dp-symbol" style="--color:${project.color || "#4263eb"}">${escHtml(project.symbol || "P")}</span><div class="dp-head-body"><strong>${escHtml(project.name)}</strong>${summaryBlock}</div></div>`;
+  const allActs = project.actions || [];
+  if (allActs.length) {
+    const filterChip = (status, label) =>
+      `<button type="button" class="board-filter-chip${actionStatusFilter.has(status) ? " active" : ""}" data-status="${status}">${label}</button>`;
+    const filtered = allActs.filter((a) => actionStatusFilter.has(actionStatusCol(a)));
+    html += `<div class="dp-block">
+      <div class="dp-actions-head">
+        <h4>Action items</h4>
+        <button type="button" class="link-btn dp-due-link" data-project="${project.id}">See action items by due dates →</button>
+      </div>
+      <div class="dp-action-filter">
+        ${filterChip("in_progress", "In Progress")}
+        ${filterChip("completed", "Completed")}
+        ${filterChip("backlog", "Backlog")}
+      </div>
+      ${filtered.length
+        ? filtered.map((a) => _dpActionRow(a, project)).join("")
+        : '<p class="empty small">No action items match this filter.</p>'}
+    </div>`;
   }
-  if ((project.events || []).length) {
-    html += `<div class="dp-block"><h4>Project timeline</h4>${project.events
-      .slice(0, 8)
-      .map((e) => `<div class="dp-event"><time>${escHtml(e.date)} · ${escHtml(e.type)}</time><strong>${escHtml(e.title)}</strong>${e.body ? `<p>${escHtml(e.body)}</p>` : ""}</div>`)
-      .join("")}</div>`;
+
+  // Split on the same window the catch-up digest uses, so "recent" here
+  // means exactly what brought this project onto the Overview digest --
+  // bounded on both ends, so an OOO range's "to" date is actually respected.
+  const events = (project.events || []).slice().sort((a, b) => (b.dateMs || 0) - (a.dateMs || 0));
+  const cutoff = catchupCheckpointMs;
+  const cutoffTo = catchupCheckpointToMs;
+  const recent = cutoff != null
+    ? events.filter((e) => e.dateMs != null && e.dateMs >= cutoff && (cutoffTo == null || e.dateMs <= cutoffTo))
+    : events;
+  const anyDiverges = events.some((e) => e.sourceWhenMs != null && !_sameLocalDay(e.dateMs, e.sourceWhenMs));
+
+  // html += `<p class="dp-legend">Dates below are when the AI thinks each thing actually happens, based on the message text — not always the same as when the message arrived. ${anyDiverges ? 'Items marked <span class="dp-ai-flag">✦ AI-dated</span> differ from their source message — worth a quick check.' : ""}</p>`;
+
+  html += `<div class="dp-block dp-recent">
+    <h4>Since your last catch-up</h4>
+    ${recent.length ? _dpEventList(recent) : '<p class="empty">Nothing new here since you last checked.</p>'}
+  </div>`;
+
+  // Genuinely complete -- every event, including the recent ones above, so
+  // nothing you already saw "since your last catch-up" looks like it went
+  // missing once you look at the full record.
+  if (events.length) {
+    const historyId = `dp-history-${project.id}`;
+    html += `<div class="dp-history">
+      <button type="button" class="link-btn dp-history-toggle" data-target="${historyId}">Show complete history (${events.length} total) ▸</button>
+      <div class="dp-history-body" id="${historyId}" hidden>
+        ${_dpEventList(events)}
+      </div>
+    </div>`;
   }
+
   return html;
+}
+
+// Tracks how the drawer was opened so an edit can re-render it from the
+// (now-updated) cached data instead of leaving stale text on screen.
+let _drawerContext = null;
+
+// A real edit dialog for Stage 8 "✎ fix" corrections -- multi-line, visible
+// on screen, cancelable -- instead of a bare window.prompt(). One shared
+// dialog, built from a list of fields (e.g. title + generated summary, or
+// title + recommended due date) so a single correction can touch more than
+// one column at once; `onSave` receives `{ fieldId: value }` and returns
+// true/false so the dialog only closes on success. `type: "date"` renders a
+// real date input instead of a textarea; anything else defaults to textarea.
+let _editDialogOnSave = null;
+function openEditDialog({ title, help, fields, onSave }) {
+  const dialog = $("#editItemDialog");
+  if (!dialog) return;
+  $("#editItemTitle").textContent = title;
+  $("#editItemHelp").textContent = help || "";
+  const host = $("#editItemFields");
+  host.innerHTML = fields
+    .map((f) => {
+      const required = f.required === false ? "" : " required";
+      const control =
+        f.type === "date"
+          ? `<input type="date" data-field="${f.id}" value="${escHtml(f.value || "")}"${required}>`
+          : `<textarea data-field="${f.id}" rows="${f.rows || 4}"${required}>${escHtml(f.value || "")}</textarea>`;
+      return `<label class="full"><span>${escHtml(f.label)}</span>${control}</label>`;
+    })
+    .join("");
+  _editDialogOnSave = onSave;
+  dialog.showModal();
+  const first = host.querySelector("textarea, input");
+  if (first) {
+    first.focus();
+    if (first.select) first.select();
+  }
+}
+if ($("#editItemForm")) {
+  $("#editItemForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const values = {};
+    let valid = true;
+    $$("#editItemFields [data-field]").forEach((el) => {
+      const v = el.value.trim();
+      if (el.hasAttribute("required") && !v) valid = false;
+      values[el.dataset.field] = v;
+    });
+    if (!valid || !_editDialogOnSave) return;
+    const submitBtn = e.submitter;
+    if (submitBtn) submitBtn.disabled = true;
+    const ok = await _editDialogOnSave(values);
+    if (submitBtn) submitBtn.disabled = false;
+    if (ok) $("#editItemDialog").close();
+  };
+}
+
+// Events are cached per-project (not in one flat list), and a fix's click
+// target doesn't carry its project id -- look the event up by id across the
+// cached projects, same way the post-save refresh already does.
+function _findCachedEvent(eventId) {
+  for (const project of Object.values(projectIndex)) {
+    const ev = project.events?.find((x) => String(x.id) === String(eventId));
+    if (ev) return ev;
+  }
+  return null;
+}
+
+// Wire the interactive bits inside a freshly-rendered drawer or project page
+// (whichever is currently showing): change an action's status (same
+// correction the board's drag makes), verify/fix a timeline event, or open
+// its original message/event. Selectors are unscoped since only one
+// container is ever populated at a time.
+function _wireDrawerInteractions() {
+  $$(".dp-action-status").forEach((sel) => {
+    const prev = sel.value;
+    sel.onchange = async (e) => {
+      e.stopPropagation();
+      const actionId = sel.dataset.action;
+      const projectId = sel.dataset.project || null;
+      if (!actionId) return;
+      const value = sel.value; // "in_progress" | "completed" | "backlog"
+      const status = value === "completed" ? "completed" : "in_progress";
+      const backlog = value === "backlog";
+      const ok = await window.updateActionStatus?.(actionId, status, backlog, projectId);
+      if (!ok) {
+        sel.value = prev;
+        toast("Could not update", "Please try again.");
+        return;
+      }
+      const project = projectId ? projectIndex[projectId] : null;
+      const action = project?.actions?.find((a) => String(a.id) === String(actionId));
+      if (action) {
+        action.status = status;
+        action.backlog = backlog;
+        action.done = status === "completed";
+      }
+      _syncBoardCard(actionId, { status, backlog });
+      toast("Updated", "Status changed.");
+      _refreshDrawer();
+    };
+  });
+  $$(".dp-event-main.clickable").forEach((row) => {
+    row.onclick = () => {
+      const src = row.closest(".dp-event")?.dataset.src;
+      if (src) openItem(src);
+    };
+  });
+  $$(".dp-history-toggle").forEach((btn) => {
+    btn.onclick = () => {
+      const body = document.getElementById(btn.dataset.target);
+      if (!body) return;
+      if (body.hasAttribute("hidden")) {
+        body.removeAttribute("hidden");
+        btn.textContent = btn.textContent.replace("▸", "▾").replace("Show", "Hide");
+      } else {
+        body.setAttribute("hidden", "");
+        btn.textContent = btn.textContent.replace("▾", "▸").replace("Hide", "Show");
+      }
+    };
+  });
+  $$(".verify-ok").forEach((b) => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      const row = b.closest(".dp-event");
+      const ok = await window.confirmDigestItem?.(row?.dataset.src || null, _drawerContext?.projectId || null);
+      toast(ok ? "Confirmed" : "Could not confirm", ok ? "Thanks — marked as correct." : "Please try again.");
+    };
+  });
+  $$(".verify-fix").forEach((b) => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      const row = b.closest(".dp-event");
+      const eventId = row?.dataset.event;
+      if (!eventId) return;
+      const cached = _findCachedEvent(eventId);
+      openEditDialog({
+        title: "Edit timeline event",
+        help: "Fix the title and/or the AI-generated summary for this event. Saved corrections are used to improve future extraction.",
+        fields: [
+          { id: "title", label: "Title", value: cached?.title ?? row?.dataset.title ?? "", rows: 2 },
+          { id: "body", label: "Summary", value: cached?.body ?? "", rows: 5, required: false },
+        ],
+        onSave: async (values) => {
+          const ok = await window.editDigestEvent?.(eventId, { title: values.title, body: values.body });
+          if (!ok) {
+            toast("Could not save fix", "Please try again.");
+            return false;
+          }
+          const ev = _findCachedEvent(eventId);
+          if (ev) {
+            ev.title = values.title;
+            ev.body = values.body;
+          }
+          toast("Updated", "Timeline item corrected.");
+          _refreshDrawer();
+          return true;
+        },
+      });
+    };
+  });
+
+  // Stage 8: verify-in-place for the project's own summary (Stage 5,
+  // LLM-generated) -- confirm it reads correctly, or fix it in place.
+  $$(".summary-verify-ok").forEach((b) => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      const projectId = b.closest(".dp-summary")?.dataset.project || _drawerContext?.projectId || null;
+      if (!projectId) return;
+      const ok = await window.confirmProjectSummary?.(projectId);
+      toast(ok ? "Confirmed" : "Could not confirm", ok ? "Thanks — summary marked as correct." : "Please try again.");
+    };
+  });
+  $$(".summary-verify-fix").forEach((b) => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      const projectId = b.closest(".dp-summary")?.dataset.project || _drawerContext?.projectId || null;
+      if (!projectId) return;
+      openEditDialog({
+        title: "Edit project summary",
+        help: "Rewrite the AI-generated summary for this project. Saved corrections are used to improve future extraction.",
+        fields: [{ id: "summary", label: "Summary", value: projectIndex[projectId]?.summary || "", rows: 5 }],
+        onSave: async (values) => {
+          const ok = await window.editProjectSummary?.(projectId, values.summary);
+          if (!ok) {
+            toast("Could not save summary", "Please try again.");
+            return false;
+          }
+          if (projectIndex[projectId]) projectIndex[projectId].summary = values.summary;
+          toast("Updated", "Project summary corrected.");
+          _refreshDrawer();
+          return true;
+        },
+      });
+    };
+  });
+
+  // Stage 8: verify-in-place for action items -- confirm it's actually
+  // needed, fix its title, or reject it (removes it -- for AI-suggested
+  // items, especially backlog ones, that missed the mark entirely).
+  $$(".action-verify-ok").forEach((b) => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      const row = b.closest(".dp-action");
+      const actionId = row?.dataset.action;
+      const projectId = row?.dataset.project || null;
+      if (!actionId) return;
+      const ok = await window.confirmAction?.(actionId, projectId);
+      toast(ok ? "Confirmed" : "Could not confirm", ok ? "Thanks — marked as needed." : "Please try again.");
+    };
+  });
+  $$(".action-verify-fix").forEach((b) => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      const row = b.closest(".dp-action");
+      const actionId = row?.dataset.action;
+      const projectId = row?.dataset.project || null;
+      if (!actionId) return;
+      openEditDialog({
+        title: "Edit action item",
+        help: "Fix the title and/or the AI-recommended due date for this action. Saved corrections are used to improve future extraction.",
+        fields: [
+          { id: "title", label: "Title", value: row?.dataset.title || "", rows: 2 },
+          { id: "due_date", label: "Due date", value: row?.dataset.due || "", type: "date", required: false },
+        ],
+        onSave: async (values) => {
+          const ok = await window.editActionTitle?.(actionId, { title: values.title, due_date: values.due_date });
+          if (!ok) {
+            toast("Could not save fix", "Please try again.");
+            return false;
+          }
+          const project = projectId ? projectIndex[projectId] : null;
+          const action = project?.actions?.find((a) => String(a.id) === String(actionId));
+          if (action) {
+            action.title = values.title;
+            action.dueDate = values.due_date;
+            action.due = formatDueLabel(values.due_date);
+          }
+          _syncBoardCard(actionId, {
+            title: values.title,
+            due: formatDueLabel(values.due_date),
+            dueDate: values.due_date,
+            overdue: computeOverdue(values.due_date, action?.done),
+          });
+          toast("Updated", "Action item corrected.");
+          _refreshDrawer();
+          return true;
+        },
+      });
+    };
+  });
+  $$(".action-verify-reject").forEach((b) => {
+    b.onclick = async (e) => {
+      e.stopPropagation();
+      const row = b.closest(".dp-action");
+      const actionId = row?.dataset.action;
+      const projectId = row?.dataset.project || null;
+      if (!actionId) return;
+      if (!confirm("Remove this action item? It wasn't actually needed.")) return;
+      const ok = await window.rejectAction?.(actionId, projectId);
+      if (!ok) {
+        toast("Could not remove", "Please try again.");
+        return;
+      }
+      const project = projectId ? projectIndex[projectId] : null;
+      if (project) project.actions = (project.actions || []).filter((a) => String(a.id) !== String(actionId));
+      _syncBoardCard(actionId, null);
+      toast("Removed", "Marked as not needed.");
+      _refreshDrawer();
+    };
+  });
+
+  // Status filter for this project's action items -- toggles which of the
+  // three states (matching the Task Board's columns) are shown.
+  $$(".dp-action-filter .board-filter-chip").forEach((btn) => {
+    btn.onclick = () => {
+      const status = btn.dataset.status;
+      if (actionStatusFilter.has(status)) actionStatusFilter.delete(status);
+      else actionStatusFilter.add(status);
+      _refreshDrawer();
+    };
+  });
+  // "See action items by due dates" -- jumps to the Task Board pre-filtered
+  // to just this project, where the due-date filter actually lives.
+  $$(".dp-due-link").forEach((btn) => {
+    btn.onclick = () => {
+      if (btn.dataset.project) showProjectOnBoard(btn.dataset.project);
+    };
+  });
+}
+
+// Re-render from (now-updated) cached data after an edit, so a correction
+// shows up immediately instead of only on next login.
+function _refreshDrawer() {
+  if (!_drawerContext) return;
+  if (_drawerContext.kind === "item") openItem(_drawerContext.itemId);
+  else if (_drawerContext.kind === "project") openProjectPage(_drawerContext.projectId);
 }
 
 function _threadBlock(items, heading) {
@@ -703,6 +1316,8 @@ function _threadBlock(items, heading) {
     .join("")}</div></div>`;
 }
 
+// Fallback-only: a real message with no project to attach to (rare -- most
+// items resolve to a project and use the full-page view below instead).
 function _openDrawer(title, eyebrow, bodyHtml) {
   const eb = $("#drawer .eyebrow");
   if (eb) eb.textContent = eyebrow;
@@ -713,10 +1328,23 @@ function _openDrawer(title, eyebrow, bodyHtml) {
   $("#drawer").classList.add("open");
   $("#backdrop").classList.add("open");
   $("#drawer").setAttribute("aria-hidden", "false");
+  _wireDrawerInteractions();
 }
 
-// Click an item (activity row / upcoming / timeline card): show its project
-// details + the full thread conversation.
+// The one full-page project view -- never a partial-width overlay with the
+// grid still visible behind it.
+function _openProjectPage(bodyHtml) {
+  showView("projects");
+  showProjectDetailView();
+  const host = $("#projectDetailBody");
+  if (host) host.innerHTML = bodyHtml;
+  _wireDrawerInteractions();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// Click an item (Upcoming row, a timeline event's source link): if it has a
+// project, show that project's full page with this specific thread; a rare
+// project-less item falls back to the lightweight overlay.
 function openItem(itemId) {
   const item = allItems.find((i) => String(i.id) === String(itemId));
   if (!item) return;
@@ -725,31 +1353,61 @@ function openItem(itemId) {
     ? allItems.filter((i) => i.external_thread_id === item.external_thread_id)
     : [item];
   thread.sort((a, b) => new Date(a.occurred_at || 0) - new Date(b.occurred_at || 0));
-  _openDrawer(
-    item.title || (project && project.name) || "(no subject)",
-    project ? "PROJECT & THREAD" : "THREAD",
-    _projectBlocks(project) + _threadBlock(thread, "Conversation"),
-  );
+  _drawerContext = { kind: "item", itemId, projectId: project?.id || null };
+  if (project) {
+    _ensureActionFilterFor(project.id);
+    _openProjectPage(_projectBlocks(project) + _threadBlock(thread, "Conversation"));
+  } else {
+    _openDrawer(item.title || "(no subject)", "THREAD", _threadBlock(thread, "Conversation"));
+  }
 }
 
-// Click a project (attention card): show the project details + its messages.
-function openProjectDrawer(projectId) {
+// Click a project: its full page -- verify/fix events, check off actions,
+// browse the complete history.
+function openProjectPage(projectId) {
   const project = projectIndex[projectId];
   if (!project) return;
+  _ensureActionFilterFor(projectId);
+  _drawerContext = { kind: "project", projectId };
   const items = allItems
     .filter((i) => i.project_id === projectId)
     .sort((a, b) => new Date(b.occurred_at || 0) - new Date(a.occurred_at || 0));
-  _openDrawer(project.name, "PROJECT", _projectBlocks(project) + _threadBlock(items, "Related messages"));
+  _openProjectPage(_projectBlocks(project) + _threadBlock(items, "Related messages"));
 }
 
-// Back-compat alias for the swimlane cards.
-const openThread = openItem;
+// "Projects" nav view: every project, not just ones with recent activity --
+// distinct from Overview (catch-up, time-scoped) and My actions (task-scoped).
+function renderProjectsList() {
+  const host = $("#projectsList");
+  if (!host) return;
+  const list = Object.values(projectIndex);
+  if (!list.length) {
+    host.innerHTML = '<p class="empty">No projects yet. Connect a source and catch up to build your first one.</p>';
+    return;
+  }
+  host.innerHTML = list
+    .map((p) => {
+      const open = (p.actions || []).filter((a) => !a.done).length;
+      const events = (p.events || []).length;
+      return `<article class="project-tile clickable" data-project="${p.id}" style="--color:${p.color}">
+        <div class="pt-symbol">${escHtml(p.symbol || "P")}</div>
+        <div class="pt-body">
+          <strong>${escHtml(p.name)}</strong>
+          ${p.summary ? `<p>${escHtml(p.summary)}</p>` : ""}
+          <small>${events} update${events === 1 ? "" : "s"} · ${open} open action${open === 1 ? "" : "s"}</small>
+        </div>
+      </article>`;
+    })
+    .join("");
+  $$("#projectsList .project-tile").forEach((el) => {
+    el.onclick = () => openProjectPage(el.dataset.project);
+  });
+}
 
-window.setTimelineData = ({ feed = [], all = [], projects = {} } = {}) => {
-  timelineFeed = feed;
+window.setTimelineData = ({ all = [], projects = {} } = {}) => {
   allItems = all;
   projectIndex = projects || {};
-  renderTimeline($("#timelineFilter")?.value || "auto");
+  renderProjectsList();
 };
 
 // Populate the summary tiles + sidebar counts from real data.
@@ -802,38 +1460,70 @@ projects = [];
 actions = [];
 activity = [];
 renderConnectors();
-const timelineFilterEl = $("#timelineFilter");
-if (timelineFilterEl)
-  timelineFilterEl.onchange = (e) => renderTimeline(e.target.value);
-const viewTimelineBtn = $("#viewTimelineBtn");
-if (viewTimelineBtn)
-  viewTimelineBtn.onclick = () => {
-    const wrap = $("#timelineWrap");
-    const feed = $("#activityTimeline");
-    if (!wrap) return;
-    if (wrap.hasAttribute("hidden")) {
-      wrap.removeAttribute("hidden");
-      if (feed) feed.style.display = "none";
-      viewTimelineBtn.textContent = "Hide timeline ◂";
-      renderTimeline($("#timelineFilter")?.value || "auto");
-    } else {
-      wrap.setAttribute("hidden", "");
-      if (feed) feed.style.display = "";
-      viewTimelineBtn.textContent = "View timeline ▸";
-    }
-  };
+if ($("#connectPromptBtn"))
+  $("#connectPromptBtn").onclick = () => $("#sourcesDialog").showModal();
 $("#closeDrawer").onclick = $("#backdrop").onclick = closeDrawer;
+if ($("#backToProjectsBtn")) $("#backToProjectsBtn").onclick = () => showProjectsGrid();
+if ($("#catchMeUpBtn"))
+  $("#catchMeUpBtn").onclick = () => window.markCaughtUp?.();
+if ($("#oooShowBtn"))
+  $("#oooShowBtn").onclick = () => {
+    const from = $("#oooFrom")?.value;
+    const to = $("#oooTo")?.value;
+    if (!from || !to) {
+      toast("Pick both dates", "Choose a from and to date to catch up on a specific range.");
+      return;
+    }
+    window.showOooRange?.(from, to);
+  };
 $$(".tabs button").forEach(
   (b) =>
-    (b.onclick = () => {
-      $$(".tabs button").forEach((x) => x.classList.remove("active"));
-      b.classList.add("active");
-      activeTab = b.dataset.tab;
-      renderDrawer();
-    }),
+  (b.onclick = () => {
+    $$(".tabs button").forEach((x) => x.classList.remove("active"));
+    b.classList.add("active");
+    activeTab = b.dataset.tab;
+    renderDrawer();
+  }),
 );
+if ($("#boardProjectFilterBtn"))
+  $("#boardProjectFilterBtn").onclick = (e) => {
+    e.stopPropagation();
+    const menu = $("#boardProjectFilterMenu");
+    if (!menu) return;
+    const opening = menu.hidden;
+    menu.hidden = !opening;
+    $("#boardProjectFilterBtn").setAttribute("aria-expanded", String(opening));
+  };
+// Outside click closes the menu; a click inside it (a checkbox/label) does
+// not, so multiple projects can be toggled without the menu snapping shut.
+document.addEventListener("click", (e) => {
+  const menu = $("#boardProjectFilterMenu");
+  const dropdown = $("#boardProjectFilterDropdown");
+  if (menu && !menu.hidden && dropdown && !dropdown.contains(e.target)) {
+    menu.hidden = true;
+    $("#boardProjectFilterBtn")?.setAttribute("aria-expanded", "false");
+  }
+});
+if ($("#boardDueFrom"))
+  $("#boardDueFrom").onchange = (e) => {
+    boardDueFrom = e.target.value || null;
+    renderBoard();
+  };
+if ($("#boardDueTo"))
+  $("#boardDueTo").onchange = (e) => {
+    boardDueTo = e.target.value || null;
+    renderBoard();
+  };
+if ($("#boardFilterClear"))
+  $("#boardFilterClear").onclick = () => {
+    boardProjectFilter = new Set();
+    boardDueFrom = null;
+    boardDueTo = null;
+    if ($("#boardDueFrom")) $("#boardDueFrom").value = "";
+    if ($("#boardDueTo")) $("#boardDueTo").value = "";
+    renderBoard();
+  };
 $("#uploadBtn").onclick = () => $("#uploadDialog").showModal();
-$("#optionalUploadBtn").onclick = () => $("#uploadDialog").showModal();
 $("#addBtn").onclick = () => $("#updateDialog").showModal();
 $("#connectAppsBtn").onclick = () => $("#sourcesDialog").showModal();
 $("#manageSources").onclick = $("#sourcesNav").onclick = () =>
@@ -851,10 +1541,10 @@ function filePreview() {
     .join("");
   $$("[data-i]").forEach(
     (b) =>
-      (b.onclick = () => {
-        chosen.splice(+b.dataset.i, 1);
-        filePreview();
-      }),
+    (b.onclick = () => {
+      chosen.splice(+b.dataset.i, 1);
+      filePreview();
+    }),
   );
 }
 $("#fileInput").onchange = (e) => {
@@ -941,26 +1631,25 @@ document.onkeydown = (e) => {
   if (e.key === "Escape") closeDrawer();
 };
 $("#menuBtn").onclick = () => $("#sidebar").classList.toggle("open");
+
+// Real view-switching (Overview = catch-up, Actions = board + upcoming,
+// Projects = browse + edit), not scroll-to-anchor -- Overview stays
+// laser-focused on "what changed" instead of every section living on one
+// long page.
 $$(".nav[data-target]").forEach(
   (b) =>
-    (b.onclick = () => {
+  (b.onclick = () => {
+    const target = b.dataset.target;
+    if (VIEW_IDS.includes(target)) {
+      showView(target);
+      // Always land on the grid from the nav, never resume wherever a
+      // previous project page was left.
+      if (target === "projects") showProjectsGrid();
+    } else {
       $$(".nav").forEach((n) => n.classList.remove("active"));
       b.classList.add("active");
-      $("#" + b.dataset.target)?.scrollIntoView({ behavior: "smooth" });
-      if (innerWidth < 800) $("#sidebar").classList.remove("open");
-    }),
+      $("#" + target)?.scrollIntoView({ behavior: "smooth" });
+    }
+    if (innerWidth < 800) $("#sidebar").classList.remove("open");
+  }),
 );
-$("#allActionsBtn").onclick = () => {
-  if (!actions.some((a) => a.id === 5)) {
-    actions.push({
-      id: 5,
-      title: "Send final analytics requirements",
-      project: "Quarterly Planning",
-      projectId: "quarterly",
-      due: "Aug 14",
-      color: "#2e8aa6",
-    });
-    renderActions();
-  }
-  toast("Showing all actions", "Additional project actions are now visible.");
-};

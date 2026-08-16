@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="Project memory dashboard prototype">
   <title>ThreadLinePMA | AI Project Manager Assistant</title>
-  <link rel="stylesheet" href="assets/css/styles.css?v=8">
+  <link rel="stylesheet" href="assets/css/styles.css?v=44">
 </head>
 <body class="auth-pending">
   <div class="app">
@@ -14,7 +14,7 @@
       <nav aria-label="Primary navigation">
         <button class="nav active" data-target="overview"><span>⌂</span>Overview</button>
         <button class="nav" data-target="projects"><span>▦</span>Projects <b id="navProjectCount">0</b></button>
-        <button class="nav" data-target="actions"><span>✓</span>My actions <b class="warn" id="navActionCount">0</b></button>
+        <button class="nav" data-target="actions"><span>✓</span>My Task Board <b class="warn" id="navActionCount">0</b></button>
         <button class="nav" id="sourcesNav"><span>↗</span>Sources</button>
       </nav>
       <div class="side-section">
@@ -41,62 +41,87 @@
       </header>
 
       <div class="content" id="overview">
-        <section class="welcome">
-          <div><p class="eyebrow">YOUR PROJECT MEMORY</p><h1>Good afternoon, <span id="welcomeUserName">there</span></h1><p id="welcomeStatus">Connect at least one work app to start building your dashboard automatically.</p></div>
-          <div class="connection-summary" id="connectionSummary"><span>1</span><div><strong>First, connect your work apps</strong><small>Gmail or Google Calendar takes only a minute</small></div></div>
-        </section>
-
-        <section class="integration-hub" id="integrations" aria-labelledby="integrationTitle">
-          <div class="integration-copy">
-            <span class="setup-badge">RECOMMENDED FIRST STEP</span>
-            <p class="eyebrow">CONNECT ONCE. IMPORT AUTOMATICALLY.</p>
-            <h2 id="integrationTitle">Bring in the work you already do.</h2>
-            <p id="integrationDescription">Connect Gmail or Google Calendar first. ThreadLinePMA imports relevant information, groups it into projects, builds timelines, and extracts action items for you.</p>
-            <div class="integration-notes"><span>✓ Read-only access</span><span>✓ You choose what syncs</span><span>✓ Disconnect anytime</span></div>
+        <section class="catchup-hero" id="catchupHero">
+          <div class="catchup-copy">
+            <p class="eyebrow">👋 WELCOME BACK</p>
+            <h1>Catch up on what you missed, <span id="welcomeUserName">there</span></h1>
+            <p class="catchup-since">Since <strong id="catchupSince">—</strong></p>
           </div>
-          <div class="integration-options" id="integrationOptions"></div>
-          <div class="setup-flow" aria-label="How ThreadLinePMA works">
-            <article class="active"><i>1</i><div><strong>Connect your apps</strong><small>Gmail and Calendar are the primary inputs.</small></div></article>
-            <span>→</span>
-            <article><i>2</i><div><strong>Automatic import</strong><small>We organize related meetings and messages.</small></div></article>
-            <span>→</span>
-            <article><i>3</i><div><strong>Review results</strong><small>Verify projects, timelines, and actions.</small></div></article>
+          <div class="catchup-actions">
+            <button class="button primary" id="catchMeUpBtn">Catch Me Up</button>
           </div>
-          <div class="secondary-import">
-            <div><span>OPTIONAL</span><strong>Have files outside your connected apps?</strong><small>Upload documents as a secondary source. You do not need to recreate projects or tasks manually.</small></div>
-            <button class="button secondary" id="optionalUploadBtn" type="button">↑ Upload files</button>
+          <div class="catchup-override">
+            <span>Or catch me up from</span>
+            <input type="date" id="oooFrom" aria-label="From date">
+            <span>to</span>
+            <input type="date" id="oooTo" aria-label="To date">
+            <button class="button secondary" id="oooShowBtn">Show</button>
           </div>
         </section>
 
+        <section class="connect-prompt" id="connectPrompt" hidden>
+          <span>Connect Gmail or Google Calendar to start catching up automatically.</span>
+          <button class="button primary" id="connectPromptBtn">Connect apps</button>
+        </section>
+
+        <section class="panel catchup-panel" id="catchupPanel">
+          <div class="section-head"><div><h2>What changed</h2><p>Decisions and differing opinions first, grouped by project</p></div></div>
+          <div id="catchupList"></div>
+        </section>
+      </div>
+
+      <div class="content" id="actions" hidden>
         <div class="workspace-heading">
-          <div><p class="eyebrow">AUTOMATICALLY GENERATED OUTPUT</p><h2>Your organized workspace</h2><p>Projects, decisions, and actions appear here after your sources are imported.</p></div>
+          <div><p class="eyebrow">TASKS & WHAT'S NEXT</p><h2>My Task Board</h2><p>AI-inferred status — drag a card to correct it — plus meetings and deadlines ahead.</p></div>
         </div>
 
-        <section class="metrics" aria-label="Workspace summary">
-          <article><i class="blue">▦</i><div><small>Active projects</small><strong id="statProjects">0</strong><span><b id="statDueWeek">0</b> due this week</span></div></article>
-          <article><i class="orange">!</i><div><small>Need attention</small><strong id="statAttention">0</strong><span>open items</span></div></article>
-          <article><i class="purple">◇</i><div><small>Waiting</small><strong id="statWaiting">0</strong><span>awaiting reply</span></div></article>
-          <article><i class="green">↗</i><div><small>This week</small><strong id="statWeek">0</strong><span>new items</span></div></article>
-        </section>
-
-        <section class="panel attention-panel" id="attention">
-          <div class="section-head"><div><h2>Needs your attention</h2><p>Projects with open follow-ups</p></div></div>
-          <div id="attentionList"></div>
-        </section>
-
-        <section class="panel activity-panel">
-          <div class="section-head"><div><h2>Recent project activity</h2><p>What changed, newest first</p></div><button class="link-btn" id="viewTimelineBtn">View timeline ▸</button></div>
-          <div id="activityTimeline"></div>
-          <div class="timeline-wrap" id="timelineWrap" hidden>
-            <div class="tl-hint"><small>Drag sideways to move through time</small><select id="timelineFilter"><option value="auto">Auto zoom</option><option value="day">By day</option><option value="week">By week</option><option value="month">By month</option></select></div>
-            <div class="tl-board" id="projectGrid"></div>
+        <section class="panel board-panel" id="boardPanel">
+          <div class="section-head"><div><h2>Action board</h2><p>AI-inferred status — drag a card to correct it</p></div></div>
+          <div class="board-filters" id="boardFilters">
+            <div class="board-filter-group">
+              <span class="board-filter-label">Project</span>
+              <div class="board-filter-dropdown" id="boardProjectFilterDropdown">
+                <button type="button" class="board-filter-dd-btn" id="boardProjectFilterBtn" aria-haspopup="true" aria-expanded="false">All projects ▾</button>
+                <div class="board-filter-dd-menu" id="boardProjectFilterMenu" hidden></div>
+              </div>
+            </div>
+            <div class="board-filter-group">
+              <span class="board-filter-label">Due date</span>
+              <input type="date" id="boardDueFrom" aria-label="Due from">
+              <span>to</span>
+              <input type="date" id="boardDueTo" aria-label="Due to">
+              <button type="button" class="link-btn" id="boardFilterClear">Clear filters</button>
+            </div>
+          </div>
+          <div class="board-grid" id="boardGrid">
+            <div class="board-col"><h4>In Progress</h4><div class="board-list" data-col="in_progress"></div></div>
+            <div class="board-col"><h4>Completed</h4><div class="board-list" data-col="completed"></div></div>
+            <div class="board-col"><h4>Backlog</h4><div class="board-list" data-col="backlog"></div></div>
           </div>
         </section>
 
         <section class="panel upcoming-panel">
-          <div class="section-head"><div><h2>Recent / Upcoming</h2><p>Meetings and deadlines ahead</p></div></div>
+          <div class="section-head"><div><h2>Upcoming</h2><p>Meetings and deadlines ahead</p></div></div>
           <div id="upcomingList"></div>
         </section>
+      </div>
+
+      <div class="content" id="projects" hidden>
+        <div id="projectsGridView">
+          <div class="workspace-heading">
+            <div><p class="eyebrow">ALL PROJECTS</p><h2>Projects</h2><p>Everything ThreadLinePMA has grouped from your connected sources — not just what's changed recently.</p></div>
+          </div>
+          <section class="panel projects-panel">
+            <div id="projectsList" class="projects-grid"></div>
+          </section>
+        </div>
+
+        <div id="projectDetailView" hidden>
+          <button type="button" class="link-btn" id="backToProjectsBtn">← Back to all projects</button>
+          <section class="panel project-detail-panel">
+            <div id="projectDetailBody"></div>
+          </section>
+        </div>
       </div>
     </main>
   </div>
@@ -114,6 +139,10 @@
 
   <dialog id="updateDialog">
     <form id="updateForm"><header><div><p class="eyebrow">VERIFY OR CORRECT</p><h2>Add missing context</h2></div><button type="button" class="icon close-dialog">×</button></header><p class="help">Use this only to correct imported information or capture an offline decision that Gmail and Calendar could not provide.</p><div class="form-grid"><label>Project<select id="updateProject" required></select></label><label>Type<select id="updateType"><option value="note">Missing note</option><option value="decision">Decision correction</option><option value="meeting">Meeting correction</option><option value="status">Status correction</option></select></label><label class="full">Title<input id="updateTitle" required placeholder="e.g. Corrected launch decision"></label><label class="full">Details<textarea id="updateDetails" required rows="4" placeholder="What should the imported timeline show?"></textarea></label></div><footer><button type="button" class="button secondary close-dialog">Cancel</button><button class="button primary">Save correction</button></footer></form>
+  </dialog>
+
+  <dialog id="editItemDialog">
+    <form id="editItemForm"><header><div><p class="eyebrow">VERIFY OR CORRECT</p><h2 id="editItemTitle">Edit</h2></div><button type="button" class="icon close-dialog">×</button></header><p class="help" id="editItemHelp"></p><div class="form-grid" id="editItemFields"></div><footer><button type="button" class="button secondary close-dialog">Cancel</button><button class="button primary">Save</button></footer></form>
   </dialog>
 
   <dialog id="sourcesDialog">
@@ -234,7 +263,7 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config/supabase-config.js"></script>
-  <script src="assets/js/dashboard.js?v=8"></script>
-  <script src="assets/js/auth.js?v=8"></script>
+  <script src="assets/js/dashboard.js?v=44"></script>
+  <script src="assets/js/auth.js?v=44"></script>
 </body>
 </html>
