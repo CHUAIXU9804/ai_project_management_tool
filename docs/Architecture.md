@@ -203,8 +203,13 @@ is ever requested.
   replacing the current boolean `completed` (kept as a derived/legacy alias
   during migration). Inferred from reply activity, due-date proximity, and
   explicit completion language — the same extraction pass, a richer output.
+  The dashboard's board (Stage 7) only ever *shows* two of the three values
+  as distinct columns (In Progress, Completed) plus the separate `backlog`
+  flag — a freshly-extracted `not_started` row folds into the In Progress
+  column until a user or later signal moves it. The column value stays in
+  the database either way; this is a display grouping, not a schema change.
 - `project_actions.backlog boolean default false` — AI-suggested-but-not-urgent
-  items, feeding the fourth board column.
+  items, feeding the board's third column.
 - `project_events.requires_response boolean` — an explicit, LLM-judged signal
   ("does this item genuinely need a reply from the user"), not a naive
   last-sender heuristic. This replaces today's client-side `statWaiting`
@@ -244,9 +249,26 @@ project timeline, and a checkpoint-scoped catch-up digest that is the app's
 - **Full timeline** (unscoped "Needs attention / Recent activity / Upcoming"
   views) stays available for anyone who wants to browse rather than catch up —
   the digest is the front door, not the only door.
+- **Project page is the verify/correct surface, not the digest.** The
+  Overview digest is glance-and-navigate only — clicking a project card takes
+  the user to that project's full page, which is where Stage 8's
+  confirm/edit/reject controls actually live (summary, timeline events,
+  action items). This keeps the catch-up scroll fast and read-only while
+  still putting every correction one click away.
 - **Board read model:** the same `project_actions` grouped by `status` +
-  `backlog` (Stage 6) instead of by time — Completed / In Progress / Not
-  Started / Backlog. A pure read grouping; no new extraction.
+  `backlog` (Stage 6) instead of by time — three columns, In Progress /
+  Completed / Backlog (no separate Not Started column; see the Stage 6 note
+  above on how `not_started` rows are grouped). A pure read grouping; no new
+  extraction. Filterable by project (multi-select) and by due-date range,
+  purely client-side over the same read. A project page's action list links
+  out to this same board pre-filtered to just that project ("See action
+  items by due dates").
+- **Status changes stay in sync across both surfaces in the same session.**
+  Changing an action's status from the project page's status control, or by
+  dragging its card on the board, updates the other surface's in-memory copy
+  immediately — no reload needed. This is a same-tab/same-session
+  convenience over shared client state, not a realtime subscription; a
+  change made in one browser tab is not pushed to another tab or user.
 - **Feeds Stage 10:** the digest's "waiting on you" list
   (`project_events.requires_response = true` with no later outbound reply),
   "new decision" list, and backlog items are exactly the input set Stage 10
@@ -262,10 +284,12 @@ advances the user's checkpoint.
 **Goal:** let users trust and correct the output; capture that as signal.
 
 - User actions map to `user_corrections.correction_type`:
-  `confirm_match`, `reject_match`, `move_project`, `edit_event`, `edit_action`.
+  `confirm_match`, `reject_match`, `move_project`, `edit_event`, `edit_action`,
+  `edit_project`.
 - On confirm/reject, update `project_source_links.review_status`.
-- On edit, update the `project_events` / `project_actions` row and set
-  `user_edited = true` so re-processing will not overwrite it.
+- On edit, update the `project_events` / `project_actions` / `projects` row
+  and set `user_edited = true` (not applicable to `projects`) so
+  re-processing will not overwrite it.
 - Store `previous_value` / `corrected_value` as JSONB for evaluation. Use these
   to measure accuracy and tune rules/prompts **before** changing behavior
   automatically (Phase 2 principle).
@@ -273,10 +297,27 @@ advances the user's checkpoint.
   `profiles.last_catchup_at` to now (or to the end of a declared OOO window).
   It is the only correction type that doesn't touch `project_events` /
   `project_actions` — it moves the Stage 7 checkpoint, not project content.
-- The "✓ looks right / ✎ fix" verify-in-place UI needs no new correction
-  type — it's `confirm_match` / `edit_event` / `edit_action` presented inline
-  in the digest instead of behind a separate review screen. Likewise, moving a
-  board card between status columns is `edit_action` on `status`/`backlog`.
+- The "✓ looks right / ✎ fix" verify-in-place UI lives on the project page
+  (see Stage 7) and covers everything Stage 5–6 generates about that
+  project, each as its own inline confirm/edit affordance rather than a
+  separate review screen:
+  - **Project summary** (Stage 5) — `confirm_match` / `edit_project`.
+  - **Timeline events** — `confirm_match` / `edit_event`, and editing covers
+    both the event's title and its AI-generated summary (`body`) in one form.
+  - **Action items** — `confirm_match` / `edit_action` for title and due
+    date, plus `edit_action` for status/backlog (the same correction a board
+    drag makes, just made from a dropdown here instead). `reject_match`
+    additionally covers "this AI-suggested action item isn't actually
+    needed" — unlike its original project-match-only scope, this deletes the
+    `project_actions` row after capturing its prior state on the correction,
+    rather than only flipping a review flag.
+  - Edits are collected through a real multi-field dialog (title and/or
+    summary/due-date together where relevant), not a bare browser prompt —
+    each field commits together on Save, and the dialog only closes once the
+    write actually succeeds.
+  - The project page's action list is filterable by status (In Progress /
+    Completed / Backlog, multi-select, default hides Completed); none of
+    this filtering touches the underlying data, same as the board's filters.
 - Three new correction types for the Stage 10 drafts queue: `edit_draft`
   (user rewrites before sending, stored like other corrections for
   evaluation), `dismiss_draft` (not relevant, drop it), and `mark_draft_sent`
@@ -394,9 +435,13 @@ Schema additions needed for the catch-up + board + "Clear my plate" features
 - `profiles.last_catchup_at` (Stage 7) — each user's catch-up checkpoint.
 - `project_actions.status` (Stage 6) — enum `not_started` | `in_progress` |
   `completed`, replacing today's boolean `completed` (kept as a legacy alias
-  during migration) — drives the board columns.
+  during migration) — drives the board columns (In Progress / Completed;
+  `not_started` displays under In Progress — see Stage 6).
 - `project_actions.backlog boolean default false` (Stage 6) — the board's
-  fourth column.
+  third column.
+- `user_corrections.correction_type` gained `edit_project` (Stage 8) so a
+  correction can target the `projects` table itself (the AI-generated
+  summary), not just `project_events` / `project_actions`.
 - `project_events.requires_response boolean` (Stage 6) — explicit,
   LLM-judged "does this need a reply" signal; replaces the client-side
   `statWaiting` heuristic and is what Stage 10 keys off of.
@@ -421,18 +466,28 @@ Catch me up from [Aug 13] to [Today]
 
 The users should be able to connect to the interface with gmail or Google Calendar, and see what they've missed from the last time they logged in or between a certain time range, and once the information/event is pulled and populated, they should be able to:
 - See the events/project conversation they've missed in a timeline (with a brief summary of what happened underneath the event title, who's involved in the conversation) (at max display 5 items at a time, if more events are included in this timeline, the panel should be scrollable, list from most recent to less recent), when you click on each event, it shows up a page with more details - open actions summaried from the item, the message or calendar event original details, and showing the complete thread of this event/project with other other related events
-- Another section, the tool is intelligent enough to categorize the action items into four columns: completed, in-progress, haven't started, backlog (suggested items from the conversation, but not urgent, that can be kept in backlog). The AI populates and moves cards automatically from Stage 6 signals — the user's job is to glance and correct, not to maintain the board. Drag-and-drop is kept, but as a correction (Stage 8 `edit_action`, sets `user_edited = true`) rather than the primary interaction, so it doesn't turn into a manually-managed Trello board.
+- Another section — **the Task Board** — is where the tool categorizes action items into three columns: **In Progress, Completed, Backlog** (suggested items from the conversation, but not urgent, that can be kept in backlog). There is no separate "not started" column; a freshly-extracted action defaults into In Progress until it's moved (see Stage 6/7). The AI populates and moves cards automatically from Stage 6 signals — the user's job is to glance and correct, not to maintain the board. Drag-and-drop is kept, but as a correction (Stage 8 `edit_action`, sets `user_edited = true`) rather than the primary interaction, so it doesn't turn into a manually-managed Trello board. Each card also shows its project and due date (if any) as small tags, and clicking a card (as opposed to dragging it) opens that project's page instead.
   - Schema: `project_actions.status` + `.backlog` — now specified in Stage 6 and the data model reference below.
+  - **Board filters:** by project (a multi-select dropdown, not one control per project, so it scales as projects are added) and by due-date range. Purely client-side over the same board read — no new query per filter change.
+  - **The same status control exists on the project page**, next to each action item, as a three-option dropdown (In Progress / Completed / Backlog) — the identical `edit_action` correction as a board drag, just reachable without leaving the project. A change from either surface updates the other's in-memory state immediately within the same session (see Stage 7).
+  - The project page's action list can itself be filtered by status, and carries a "See action items by due dates" link that jumps to the Task Board pre-filtered to just that project — the board is where the due-date filter actually lives.
   - Collaboration (adding other users to see the same items) is cut. Everything today is single-user RLS derived from that user's own inbox; sharing needs a permissions model that doesn't exist and conflicts with the "your data stays yours" privacy pitch. A read-only share link for one project's digest is the lightweight version if this is wanted later.
 
-- **Verify as you catch up, in place.** Every item in the missed-items
-  timeline and every board card already carries a `confidence` and an
-  `explanation` (per the guiding principles). Surface it inline — a
-  lightweight "✓ looks right" / "✎ fix" on each summarized item as the user
-  scrolls the digest — so verifying is part of catching up, not a separate
-  review step. Maps directly to Stage 8's `confirm_match` / `edit_event` /
-  `edit_action` corrections; no new architecture, just an explicit UI moment
-  for something the pipeline already tracks.
+- **Verify and correct on the project page, not inline in the digest scroll.**
+  The Overview digest itself is glance-and-navigate only; clicking a project
+  card takes the user to that project's full page, which is where every
+  correction actually happens. There, each AI-generated piece of content
+  carries its own "✓ looks right" / "✎ fix" pair: the project summary, each
+  timeline event (title + generated summary together), and each action item
+  (title + due date together, plus a separate status control and a "not
+  needed" removal). Every field carrying a `confidence` and an `explanation`
+  (per the guiding principles) is corrigible this way. Maps to Stage 8's
+  `confirm_match` / `edit_event` / `edit_action` / `edit_project` /
+  `reject_match` corrections — no new architecture beyond `edit_project`
+  (added so the project summary itself is correctable), just an explicit UI
+  moment for something the pipeline already tracks. Edits are made through a
+  small dialog, not a bare browser prompt, so multi-field corrections (e.g.
+  title + summary) commit together.
 
 - **"Clear my plate"** — the outbound half of catch-up, and the more
   defensible version of "let AI do new work." Not a generic drafting
