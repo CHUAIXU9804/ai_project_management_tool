@@ -58,10 +58,16 @@ PIPELINE_STEPS: list[tuple[str, list[str]]] = [
     ("digest", ["backend/digest/summarize.py", "run"]),
 ]
 
-# Frontend dev origins allowed to call /pipeline/run (this is the one route
-# on this server reached via fetch() rather than a full-page redirect, so it
-# needs its own CORS allowance -- everything else here doesn't).
-_ALLOWED_ORIGINS = {"http://localhost:8000", "http://127.0.0.1:8000"}
+# Trusted frontend origins: local dev, plus the deployed Cloudflare site.
+# Used both for CORS on /pipeline/run (the one route reached via fetch()
+# rather than a full-page redirect, so it needs its own CORS allowance) and
+# for _safe_return_to's open-redirect guard below -- same trust boundary,
+# one list.
+_ALLOWED_ORIGINS = {
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "https://ai-project-management-tool.huairuxu.workers.dev",
+}
 
 
 @app.after_request
@@ -87,14 +93,12 @@ def _clean_pending() -> None:
 
 
 def _safe_return_to(url: str | None) -> str | None:
-    """Allow redirecting back only to a local dev origin (open-redirect guard).
-
-    Production should replace this with an explicit allowlist of trusted app
-    origins rather than a localhost check.
-    """
+    """Allow redirecting back only to a trusted app origin (open-redirect guard)."""
     if not url:
         return None
     if url.startswith("http://localhost:") or url.startswith("http://127.0.0.1:"):
+        return url
+    if any(url.startswith(origin) for origin in _ALLOWED_ORIGINS if origin.startswith("https://")):
         return url
     return None
 
