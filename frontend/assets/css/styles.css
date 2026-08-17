@@ -174,13 +174,6 @@ nav {
 .chat {
   background: #29a467;
 }
-.mini-sources em {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #31ca90;
-  box-shadow: 0 0 0 3px #1b3b39;
-}
 .link-btn {
   padding: 6px 0;
   border: 0;
@@ -352,6 +345,11 @@ main {
   border: 1px solid #dce3ff; border-radius: 12px; background: #f4f6ff;
   font-size: .85rem; color: #364156;
 }
+/* `display: flex` above has the same specificity as the browser's default
+   `[hidden] { display: none }` and comes later in the cascade, so it was
+   silently winning and keeping this banner visible even when JS correctly
+   set `hidden = true` once a source connected. */
+.connect-prompt[hidden] { display: none; }
 .connect-prompt span { max-width: 60ch; }
 .ai-summary {
   min-width: 310px;
